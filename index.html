@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VirtualStyle - Try On Prototype</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="top-bar">
+      <h1>VirtualStyle</h1>
+      <button id="settings">Settings</button>
+    </div>
+
+    <div class="camera-wrap">
+      <video id="video" autoplay playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <div class="thumbnails">
+        <button class="thumb" data-src="assets/glasses.png">Glasses</button>
+        <button class="thumb" data-src="assets/hat.png">Hat</button>
+        <button class="thumb" data-src="assets/shirt_overlay.png">Shirt</button>
+        <button class="thumb" data-src="">Remove</button>
+      </div>
+      <div class="sliders">
+        <label>Scale <input id="scale" type="range" min="0.2" max="1.5" step="0.01" value="0.7"></label>
+        <label>Vertical Offset <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="-0.05"></label>
+      </div>
+    </div>
+  </div>
+
+<script src="app.js"></script>
+</body>
+</html>
