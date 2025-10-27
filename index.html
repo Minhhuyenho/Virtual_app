@@ -10,28 +10,50 @@
   <div class="app">
     <div class="top-bar">
       <h1>VirtualStyle</h1>
-      <button id="settings">Settings</button>
+      <div class="top-buttons">
+        <button id="uploadBtn">Upload Image</button>
+        <button id="settings">Settings</button>
+      </div>
     </div>
 
     <div class="camera-wrap">
       <video id="video" autoplay playsinline></video>
       <canvas id="canvas"></canvas>
+      <img id="uploadedImg" style="display: none;" />
+      <div class="status" id="status">Initializing face detection...</div>
     </div>
 
     <div class="controls">
+      <div class="input-group">
+        <input type="file" id="fileInput" accept="image/*" style="display: none;" />
+      </div>
       <div class="thumbnails">
-        <button class="thumb" data-src="assets/glasses.png">Glasses</button>
-        <button class="thumb" data-src="assets/hat.png">Hat</button>
-        <button class="thumb" data-src="assets/shirt.png">Shirt</button>
-        <button class="thumb" data-src="">Remove</button>
+        <button class="thumb" data-src="assets/glasses.png" data-type="glasses">Glasses</button>
+        <button class="thumb" data-src="assets/hat.png" data-type="hat">Hat</button>
+        <button class="thumb" data-src="assets/shirt.png" data-type="shirt">Shirt</button>
+        <button class="thumb" data-src="" data-type="">Remove</button>
       </div>
       <div class="sliders">
-        <label>Scale <input id="scale" type="range" min="0.2" max="1.5" step="0.01" value="0.7"></label>
-        <label>Vertical Offset <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="-0.05"></label>
+        <label>Scale <input id="scale" type="range" min="0.2" max="1.5" step="0.01" value="1.0"></label>
+        <label>Vertical Offset <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="0.0"></label>
       </div>
     </div>
   </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script>
+  // Wait for MediaPipe to load before starting the app
+  if (typeof window !== 'undefined') {
+    window.addEventListener('load', () => {
+      if (typeof FaceMesh === 'undefined') {
+        document.getElementById('status').textContent = 'Error loading face detection. Please refresh the page.';
+        document.getElementById('status').className = 'status error';
+      }
+    });
+  }
+</script>
 <script src="app.js"></script>
 </body>
 </html>
