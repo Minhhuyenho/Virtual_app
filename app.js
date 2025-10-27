@@ -2,8 +2,6 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
-const fileInput = document.getElementById('fileInput');
-const uploadBtn = document.getElementById('uploadBtn');
 const captureBtn = document.getElementById('captureBtn');
 const saveBtn = document.getElementById('saveBtn');
 const backToCameraBtn = document.getElementById('backToCameraBtn');
@@ -265,56 +263,6 @@ captureBtn.addEventListener('click', async () => {
   }
 });
 
-// Handle file upload
-uploadBtn.addEventListener('click', () => fileInput.click());
-
-fileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (event) => {
-    uploadedImg.src = event.target.result;
-    await uploadedImg.decode();
-    
-    // Stop camera
-    if (camera) {
-      camera.stop();
-      camera = null;
-    }
-    if (currentStream) {
-      currentStream.getTracks().forEach(track => track.stop());
-      currentStream = null;
-    }
-
-    isUsingUploadedImage = true;
-    
-    // Set canvas to match uploaded image
-    canvas.width = uploadedImg.naturalWidth;
-    canvas.height = uploadedImg.naturalHeight;
-
-    status.textContent = 'Processing image...';
-    status.className = 'status';
-    
-    // Show back to camera button
-    backToCameraBtn.style.display = 'block';
-
-    // Process image with face mesh
-    await faceMesh.send({ image: uploadedImg });
-    
-    // Start draw loop for uploaded images
-    if (isUsingUploadedImage) {
-      function drawLoop() {
-        draw();
-        if (isUsingUploadedImage) {
-          requestAnimationFrame(drawLoop);
-        }
-      }
-      drawLoop();
-    }
-  };
-  reader.readAsDataURL(file);
-});
 
 // Save image
 saveBtn.addEventListener('click', async () => {
@@ -401,7 +349,6 @@ backToCameraBtn.addEventListener('click', () => {
 // Function to reset to camera mode
 function resetToCamera() {
   isUsingUploadedImage = false;
-  fileInput.value = '';
   uploadedImg.style.display = 'none';
   uploadedImg.src = '';
   backToCameraBtn.style.display = 'none';
@@ -411,7 +358,7 @@ function resetToCamera() {
   overlayType = '';
   overlayImg = null;
   
-  // Document active thumb buttons
+  // Deactivate thumb buttons
   document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
   
   // Reinitialize camera
