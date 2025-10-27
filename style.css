@@ -5,7 +5,7 @@ body, html { height: 100%; margin: 0; font-family: Arial, Helvetica, sans-serif;
 .top-bar { width: 360px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .top-bar h1 { font-size: 20px; margin: 0; }
 .top-buttons { display: flex; gap: 8px; }
-#settings, #uploadBtn { background: #1E88E5; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+#captureBtn, #uploadBtn { background: #1E88E5; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; }
 #uploadBtn { background: #43A047; }
 
 .camera-wrap { position: relative; width: 360px; height: 640px; background: #222; border-radius: 12px; overflow: hidden; }
@@ -17,7 +17,11 @@ canvas { z-index: 2; }
 .status.error { background: rgba(244, 67, 54, 0.9); }
 
 .controls { width: 360px; }
-.input-group { margin-bottom: 8px; }
+.action-buttons { margin-bottom: 12px; display: flex; gap: 8px; flex-direction: column; }
+#saveBtn { background: #FF9800; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; width: 100%; }
+.save-btn:hover { background: #F57C00; opacity: 0.9; }
+#backToCameraBtn { background: #9C27B0; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; width: 100%; }
+.back-btn:hover { background: #7B1FA2; opacity: 0.9; }
 .thumbnails { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 8px; }
 .thumb { background: #fff; color: #000; padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s; }
 .thumb:hover { background: #e0e0e0; }

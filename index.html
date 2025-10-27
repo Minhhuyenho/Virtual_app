@@ -11,8 +11,8 @@
     <div class="top-bar">
       <h1>VirtualStyle</h1>
       <div class="top-buttons">
-        <button id="uploadBtn">Upload Image</button>
-        <button id="settings">Settings</button>
+        <button id="captureBtn">📷 Take Photo</button>
+        <button id="uploadBtn">📁 Upload</button>
       </div>
     </div>
 
@@ -24,7 +24,9 @@
     </div>
 
     <div class="controls">
-      <div class="input-group">
+      <div class="action-buttons">
+        <button id="saveBtn" class="save-btn">💾 Save Image</button>
+        <button id="backToCameraBtn" class="back-btn" style="display: none;">📷 Back to Camera</button>
         <input type="file" id="fileInput" accept="image/*" style="display: none;" />
       </div>
       <div class="thumbnails">
@@ -34,7 +36,7 @@
         <button class="thumb" data-src="" data-type="">Remove</button>
       </div>
       <div class="sliders">
-        <label>Scale <input id="scale" type="range" min="0.2" max="1.5" step="0.01" value="1.0"></label>
+        <label>Size Scale <input id="scale" type="range" min="0.3" max="2.0" step="0.05" value="1.0"></label>
         <label>Vertical Offset <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="0.0"></label>
       </div>
     </div>

@@ -4,6 +4,9 @@ const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
+const captureBtn = document.getElementById('captureBtn');
+const saveBtn = document.getElementById('saveBtn');
+const backToCameraBtn = document.getElementById('backToCameraBtn');
 const uploadedImg = document.getElementById('uploadedImg');
 
 let overlayImg = null;
@@ -204,6 +207,64 @@ function draw() {
   }
 }
 
+// Capture photo from webcam
+captureBtn.addEventListener('click', async () => {
+  try {
+    // Capture current frame from video (before overlay is drawn)
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = video.videoWidth;
+    tempCanvas.height = video.videoHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Convert to image data
+    uploadedImg.src = tempCanvas.toDataURL('image/png');
+    uploadedImg.style.display = 'block';
+    
+    // Stop camera
+    if (camera) {
+      camera.stop();
+      camera = null;
+    }
+    
+    isUsingUploadedImage = true;
+    
+    // Set canvas size
+    canvas.width = tempCanvas.width;
+    canvas.height = tempCanvas.height;
+    
+    status.textContent = 'Processing captured photo...';
+    status.className = 'status';
+    
+    // Wait for image to load and process with face mesh
+    await uploadedImg.decode();
+    await faceMesh.send({ image: uploadedImg });
+    
+    // Draw the captured image on canvas
+    draw();
+    
+    status.textContent = 'Photo captured! ✓';
+    status.className = 'status detected';
+    
+    // Show back to camera button
+    backToCameraBtn.style.display = 'block';
+    
+    // Start draw loop for captured images
+    if (isUsingUploadedImage) {
+      function drawLoop() {
+        draw();
+        if (isUsingUploadedImage) {
+          requestAnimationFrame(drawLoop);
+        }
+      }
+      drawLoop();
+    }
+  } catch (err) {
+    status.textContent = 'Capture failed: ' + err.message;
+    status.className = 'status error';
+  }
+});
+
 // Handle file upload
 uploadBtn.addEventListener('click', () => fileInput.click());
 
@@ -234,6 +295,9 @@ fileInput.addEventListener('change', async (e) => {
 
     status.textContent = 'Processing image...';
     status.className = 'status';
+    
+    // Show back to camera button
+    backToCameraBtn.style.display = 'block';
 
     // Process image with face mesh
     await faceMesh.send({ image: uploadedImg });
@@ -251,6 +315,45 @@ fileInput.addEventListener('change', async (e) => {
   };
   reader.readAsDataURL(file);
 });
+
+// Save image
+saveBtn.addEventListener('click', async () => {
+  // If in camera mode, we need to capture first
+  if (!isUsingUploadedImage) {
+    status.textContent = 'Capturing photo...';
+    captureBtn.click();
+    // Wait for capture to complete
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  
+  downloadImage();
+});
+
+function downloadImage() {
+  try {
+    // Get canvas data
+    const imageData = canvas.toDataURL('image/png');
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.download = `virtual-tryon-${Date.now()}.png`;
+    link.href = imageData;
+    link.click();
+    
+    status.textContent = 'Image saved! ✓';
+    status.className = 'status detected';
+    setTimeout(() => {
+      if (isUsingUploadedImage) {
+        status.textContent = 'Photo captured! ✓';
+      } else {
+        status.textContent = 'Face detection active';
+      }
+    }, 2000);
+  } catch (err) {
+    status.textContent = 'Failed to save image';
+    status.className = 'status error';
+  }
+}
 
 // Thumbnail buttons
 document.querySelectorAll('.thumb').forEach(btn => {
@@ -290,23 +393,30 @@ document.getElementById('offY').addEventListener('input', (e) => {
   draw();
 });
 
-// Settings button
-document.getElementById('settings').addEventListener('click', () => {
-  // Reset to camera
-  if (isUsingUploadedImage) {
-    isUsingUploadedImage = false;
-    fileInput.value = '';
-    uploadedImg.style.display = 'none';
-    
-    // Clear overlay
-    overlaySrc = '';
-    overlayType = '';
-    overlayImg = null;
-    
-    // Reinitialize camera
-    startCamera();
-  }
+// Back to camera button
+backToCameraBtn.addEventListener('click', () => {
+  resetToCamera();
 });
+
+// Function to reset to camera mode
+function resetToCamera() {
+  isUsingUploadedImage = false;
+  fileInput.value = '';
+  uploadedImg.style.display = 'none';
+  uploadedImg.src = '';
+  backToCameraBtn.style.display = 'none';
+  
+  // Clear overlay
+  overlaySrc = '';
+  overlayType = '';
+  overlayImg = null;
+  
+  // Document active thumb buttons
+  document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
+  
+  // Reinitialize camera
+  startCamera();
+}
 
 // Initialize
 initFaceMesh();
