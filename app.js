@@ -109,7 +109,22 @@ async function startCamera() {
   }
 }
 
-// Calculate overlay position based on face landmarks
+// Get landmark point in canvas coordinates
+function getLandmark(landmarks, index, canvasWidth, canvasHeight) {
+  if (!landmarks || index >= landmarks.length) return null;
+  return {
+    x: landmarks[index].x * canvasWidth,
+    y: landmarks[index].y * canvasHeight
+  };
+}
+
+// Calculate distance between two points
+function calculateDistance(p1, p2) {
+  if (!p1 || !p2) return 0;
+  return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+}
+
+// Calculate overlay position based on face landmarks with automatic scaling
 function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   if (!landmarks || !type) return null;
 
@@ -118,33 +133,93 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   const faceBox = calculateFaceBox(landmarks, canvasWidth, canvasHeight);
   
   let x, y, width, height;
+  
+  // Base scale multipliers for each item type
+  const baseScaleMultipliers = {
+    glasses: 1.8,  // Larger glasses by default
+    hat: 1.5,      // Larger hat by default
+    shirt: 2.0     // Larger shirt by default
+  };
+  
+  const baseMultiplier = baseScaleMultipliers[type] || 1.0;
 
   if (type === 'glasses') {
-    // Position glasses on eyes
-    const eyeRegion = {
-      left: faceBox.x + faceBox.width * 0.3,
-      right: faceBox.x + faceBox.width * 0.7,
-      top: faceBox.y + faceBox.height * 0.25,
-      bottom: faceBox.y + faceBox.height * 0.45
-    };
-    width = (eyeRegion.right - eyeRegion.left) * overlayScale;
+    // Use actual eye landmark positions for accurate sizing
+    // Left eye outer corner (33) and right eye outer corner (263)
+    const leftEye = getLandmark(landmarks, 33, canvasWidth, canvasHeight);
+    const rightEye = getLandmark(landmarks, 263, canvasWidth, canvasHeight);
+    
+    if (leftEye && rightEye) {
+      // Calculate distance between eye corners
+      const eyeDistance = calculateDistance(leftEye, rightEye);
+      // Use eye distance as base for glasses width, with multiplier for better fit
+      width = eyeDistance * overlayScale * baseMultiplier;
+    } else {
+      // Fallback to face box
+      width = faceBox.width * 0.6 * overlayScale * baseMultiplier;
+    }
+    
     height = (imgHeight / imgWidth) * width;
-    x = eyeRegion.left - width * 0.1;
-    y = eyeRegion.top - height * 0.3 + (canvasHeight * overlayOffsetY);
+    
+    // Center horizontally on face
+    if (leftEye && rightEye) {
+      const eyeMidpointX = (leftEye.x + rightEye.x) / 2;
+      x = eyeMidpointX - width / 2;
+      
+      const eyeMidpointY = (leftEye.y + rightEye.y) / 2;
+      y = eyeMidpointY - height * 0.4 + (canvasHeight * overlayOffsetY);
+    } else {
+      x = faceBox.x + (faceBox.width - width) / 2;
+      y = faceBox.y + faceBox.height * 0.25 - height * 0.5 + (canvasHeight * overlayOffsetY);
+    }
   } 
   else if (type === 'hat') {
-    // Position hat on forehead/head
-    width = faceBox.width * overlayScale;
+    // Use forehead points and face width
+    const faceLeft = getLandmark(landmarks, 234, canvasWidth, canvasHeight);  // Left temple
+    const faceRight = getLandmark(landmarks, 454, canvasWidth, canvasHeight); // Right temple
+    
+    if (faceLeft && faceRight) {
+      const faceWidth = calculateDistance(faceLeft, faceRight);
+      width = faceWidth * overlayScale * baseMultiplier;
+    } else {
+      width = faceBox.width * overlayScale * baseMultiplier;
+    }
+    
     height = (imgHeight / imgWidth) * width;
-    x = faceBox.x + (faceBox.width - width) / 2;
-    y = faceBox.y - height * 0.7 + (canvasHeight * overlayOffsetY);
+    
+    // Get forehead top point
+    const forehead = getLandmark(landmarks, 10, canvasWidth, canvasHeight); // Top of head
+    if (forehead) {
+      x = (faceBox.x + faceBox.width / 2) - width / 2;
+      y = forehead.y - height * 0.7 + (canvasHeight * overlayOffsetY);
+    } else {
+      x = faceBox.x + (faceBox.width - width) / 2;
+      y = faceBox.y - height * 0.7 + (canvasHeight * overlayOffsetY);
+    }
   }
   else if (type === 'shirt') {
-    // Position shirt on lower face/neck
-    width = faceBox.width * overlayScale * 1.5;
+    // Use face width at jaw level
+    const jawLeft = getLandmark(landmarks, 234, canvasWidth, canvasHeight);  // Left jaw
+    const jawRight = getLandmark(landmarks, 454, canvasWidth, canvasHeight); // Right jaw
+    
+    if (jawLeft && jawRight) {
+      const jawWidth = calculateDistance(jawLeft, jawRight);
+      width = jawWidth * overlayScale * baseMultiplier;
+    } else {
+      width = faceBox.width * overlayScale * baseMultiplier;
+    }
+    
     height = (imgHeight / imgWidth) * width;
-    x = faceBox.x + (faceBox.width - width) / 2;
-    y = faceBox.y + faceBox.height * 0.6 + (canvasHeight * overlayOffsetY);
+    
+    // Position below chin
+    const chin = getLandmark(landmarks, 175, canvasWidth, canvasHeight); // Chin point
+    if (chin) {
+      x = faceBox.x + (faceBox.width - width) / 2;
+      y = chin.y - height * 0.3 + (canvasHeight * overlayOffsetY);
+    } else {
+      x = faceBox.x + (faceBox.width - width) / 2;
+      y = faceBox.y + faceBox.height * 0.6 + (canvasHeight * overlayOffsetY);
+    }
   }
   else {
     return null;

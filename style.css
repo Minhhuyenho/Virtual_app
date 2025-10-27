@@ -29,3 +29,4 @@ canvas { z-index: 2; }
 
 .sliders label { display: block; font-size: 13px; color: #ddd; margin-bottom: 6px; }
 input[type=range] { width: 100%; }
+.info-text { font-size: 11px; color: #888; text-align: center; margin-top: 4px; padding: 6px; }
