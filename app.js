@@ -1266,6 +1266,376 @@ function resetToCamera() {
   startCamera();
 }
 
-// Initialize
+// ========================================
+// Virtual Closet System
+// ========================================
+let savedOutfits = [];
+const STORAGE_KEY = 'virtualCloset_outfits';
+
+// Load saved outfits from localStorage
+function loadSavedOutfits() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      savedOutfits = JSON.parse(stored);
+      updateClosetBadge();
+    }
+  } catch (err) {
+    console.error('Error loading saved outfits:', err);
+    savedOutfits = [];
+  }
+}
+
+// Save outfits to localStorage
+function saveOutfitsToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedOutfits));
+    updateClosetBadge();
+  } catch (err) {
+    console.error('Error saving outfits:', err);
+    alert('Failed to save outfit. Please check if localStorage is available.');
+  }
+}
+
+// Get current outfit data
+function getCurrentOutfitData() {
+  return {
+    src: overlaySrc || '',
+    type: overlayType || '',
+    scale: overlayScale,
+    offsetY: overlayOffsetY,
+    itemName: overlaySrc ? getProductNameBySrc(overlaySrc) : 'None'
+  };
+}
+
+// Get product name by source path
+function getProductNameBySrc(src) {
+  const product = products.find(p => p.src === src);
+  return product ? product.name : 'Unknown Item';
+}
+
+// Capture canvas screenshot
+function captureOutfitPreview() {
+  try {
+    // Ensure canvas is drawn
+    draw();
+    
+    // Small delay to ensure rendering is complete
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataURL);
+      }, 100);
+    });
+  } catch (err) {
+    console.error('Error capturing preview:', err);
+    return null;
+  }
+}
+
+// Open save outfit modal
+async function openSaveOutfitModal() {
+  const modal = document.getElementById('saveOutfitModal');
+  const previewImg = document.getElementById('outfitPreviewImg');
+  const itemsList = document.getElementById('outfitItemsList');
+  const nameInput = document.getElementById('outfitNameInput');
+  
+  // Reset form
+  nameInput.value = '';
+  previewImg.style.display = 'none';
+  
+  // Get current outfit data
+  const outfitData = getCurrentOutfitData();
+  
+  // Capture preview
+  const preview = await captureOutfitPreview();
+  if (preview) {
+    previewImg.src = preview;
+    previewImg.style.display = 'block';
+  }
+  
+  // Show items list
+  if (outfitData.src) {
+    itemsList.innerHTML = `<p class="text-sm"><strong>Current Item:</strong> ${outfitData.itemName}</p>`;
+  } else {
+    itemsList.innerHTML = '<p class="text-sm text-gray-500">No items selected</p>';
+  }
+  
+  modal.classList.remove('hidden');
+  nameInput.focus();
+}
+
+// Save outfit to closet
+async function saveOutfit() {
+  const nameInput = document.getElementById('outfitNameInput');
+  const outfitName = nameInput.value.trim() || `Outfit ${savedOutfits.length + 1}`;
+  
+  // Get current outfit data
+  const outfitData = getCurrentOutfitData();
+  
+  // Capture preview
+  const preview = await captureOutfitPreview();
+  if (!preview) {
+    alert('Failed to capture outfit preview. Please try again.');
+    return;
+  }
+  
+  // Create outfit object
+  const outfit = {
+    id: Date.now(),
+    name: outfitName,
+    preview: preview,
+    items: outfitData.src ? [{
+      src: outfitData.src,
+      type: outfitData.type,
+      name: outfitData.itemName
+    }] : [],
+    settings: {
+      scale: outfitData.scale,
+      offsetY: outfitData.offsetY
+    },
+    createdAt: new Date().toISOString()
+  };
+  
+  // Add to saved outfits
+  savedOutfits.unshift(outfit); // Add to beginning
+  saveOutfitsToStorage();
+  
+  // Close modal and show success
+  closeSaveOutfitModal();
+  renderClosetOutfits();
+  
+  // Show notification
+  const btn = document.getElementById('saveOutfitBtn');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '<span>✓</span> <span>Saved!</span>';
+  btn.classList.add('bg-green-600');
+  setTimeout(() => {
+    btn.innerHTML = originalText;
+    btn.classList.remove('bg-green-600');
+  }, 2000);
+}
+
+// Render closet outfits
+function renderClosetOutfits() {
+  const container = document.getElementById('closetOutfits');
+  
+  if (savedOutfits.length === 0) {
+    container.innerHTML = '<p class="text-gray-400 text-center py-8 col-span-full">Your closet is empty. Save an outfit to get started!</p>';
+    return;
+  }
+  
+  container.innerHTML = savedOutfits.map(outfit => `
+    <div class="bg-gray-700 rounded-lg overflow-hidden hover:bg-gray-600 transition outfit-card" data-outfit-id="${outfit.id}">
+      <div class="relative">
+        <img src="${outfit.preview}" alt="${outfit.name}" class="w-full h-48 object-cover">
+        <button class="delete-outfit-btn absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full text-xs" data-outfit-id="${outfit.id}" title="Delete">
+          ✕
+        </button>
+      </div>
+      <div class="p-3">
+        <h3 class="font-semibold text-sm mb-1">${outfit.name}</h3>
+        <p class="text-xs text-gray-400 mb-3">
+          ${outfit.items.length > 0 ? outfit.items.map(i => i.name).join(', ') : 'No items'}
+        </p>
+        <div class="flex gap-2">
+          <button class="try-again-btn flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded text-xs font-medium" data-outfit-id="${outfit.id}">
+            Try Again
+          </button>
+          <button class="edit-outfit-btn bg-gray-600 hover:bg-gray-500 text-white py-2 px-3 rounded text-xs" data-outfit-id="${outfit.id}" title="Edit Name">
+            ✏️
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Add event listeners
+  document.querySelectorAll('.try-again-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const outfitId = parseInt(btn.dataset.outfitId);
+      restoreOutfit(outfitId);
+    });
+  });
+  
+  document.querySelectorAll('.delete-outfit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const outfitId = parseInt(btn.dataset.outfitId);
+      deleteOutfit(outfitId);
+    });
+  });
+  
+  document.querySelectorAll('.edit-outfit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const outfitId = parseInt(btn.dataset.outfitId);
+      editOutfitName(outfitId);
+    });
+  });
+}
+
+// Restore outfit (Try Again)
+function restoreOutfit(outfitId) {
+  const outfit = savedOutfits.find(o => o.id === outfitId);
+  if (!outfit) return;
+  
+  // Restore settings
+  overlayScale = outfit.settings.scale;
+  overlayOffsetY = outfit.settings.offsetY;
+  
+  // Update sliders
+  const scaleSlider = document.getElementById('scale');
+  const offsetSlider = document.getElementById('offY');
+  if (scaleSlider) scaleSlider.value = overlayScale;
+  if (offsetSlider) offsetSlider.value = overlayOffsetY;
+  
+  // Restore items
+  if (outfit.items.length > 0) {
+    const firstItem = outfit.items[0]; // For now, restore first item (can be extended for multiple items)
+    applyProduct(firstItem.src, firstItem.type);
+  } else {
+    applyProduct('', '');
+  }
+  
+  // Close closet modal
+  closeClosetModal();
+  
+  // Show notification
+  status.textContent = `Restored: ${outfit.name}`;
+  status.className = 'status detected';
+  setTimeout(() => {
+    if (detectedLandmarks) {
+      status.textContent = 'Face detected ✓';
+    } else {
+      status.textContent = 'No face detected';
+      status.className = 'status';
+    }
+  }, 2000);
+}
+
+// Delete outfit
+function deleteOutfit(outfitId) {
+  if (confirm('Are you sure you want to delete this outfit?')) {
+    savedOutfits = savedOutfits.filter(o => o.id !== outfitId);
+    saveOutfitsToStorage();
+    renderClosetOutfits();
+  }
+}
+
+// Edit outfit name
+function editOutfitName(outfitId) {
+  const outfit = savedOutfits.find(o => o.id === outfitId);
+  if (!outfit) return;
+  
+  const newName = prompt('Enter new outfit name:', outfit.name);
+  if (newName && newName.trim()) {
+    outfit.name = newName.trim();
+    saveOutfitsToStorage();
+    renderClosetOutfits();
+  }
+}
+
+// Update closet badge
+function updateClosetBadge() {
+  const badge = document.getElementById('closetBadge');
+  if (badge) {
+    if (savedOutfits.length > 0) {
+      badge.textContent = savedOutfits.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+}
+
+// Close save outfit modal
+function closeSaveOutfitModal() {
+  document.getElementById('saveOutfitModal').classList.add('hidden');
+}
+
+// Open/close closet modal
+function openClosetModal() {
+  renderClosetOutfits();
+  document.getElementById('closetModal').classList.remove('hidden');
+}
+
+function closeClosetModal() {
+  document.getElementById('closetModal').classList.add('hidden');
+}
+
+// Initialize Virtual Closet event listeners
+function initVirtualCloset() {
+  // Load saved outfits on page load
+  loadSavedOutfits();
+  
+  // Save Outfit button
+  const saveOutfitBtn = document.getElementById('saveOutfitBtn');
+  if (saveOutfitBtn) {
+    saveOutfitBtn.addEventListener('click', openSaveOutfitModal);
+  }
+  
+  // Closet button
+  const closetBtn = document.getElementById('closetBtn');
+  if (closetBtn) {
+    closetBtn.addEventListener('click', openClosetModal);
+  }
+  
+  // Close buttons
+  const closeClosetBtn = document.getElementById('closeClosetBtn');
+  if (closeClosetBtn) {
+    closeClosetBtn.addEventListener('click', closeClosetModal);
+  }
+  
+  const closeSaveOutfitBtn = document.getElementById('closeSaveOutfitBtn');
+  if (closeSaveOutfitBtn) {
+    closeSaveOutfitBtn.addEventListener('click', closeSaveOutfitModal);
+  }
+  
+  // Confirm save button
+  const confirmSaveOutfitBtn = document.getElementById('confirmSaveOutfitBtn');
+  if (confirmSaveOutfitBtn) {
+    confirmSaveOutfitBtn.addEventListener('click', saveOutfit);
+  }
+  
+  // Close modals on backdrop click
+  const closetModal = document.getElementById('closetModal');
+  if (closetModal) {
+    closetModal.addEventListener('click', (e) => {
+      if (e.target === closetModal) {
+        closeClosetModal();
+      }
+    });
+  }
+  
+  const saveOutfitModal = document.getElementById('saveOutfitModal');
+  if (saveOutfitModal) {
+    saveOutfitModal.addEventListener('click', (e) => {
+      if (e.target === saveOutfitModal) {
+        closeSaveOutfitModal();
+      }
+    });
+  }
+  
+  // Allow Enter key to save outfit
+  const outfitNameInput = document.getElementById('outfitNameInput');
+  if (outfitNameInput) {
+    outfitNameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        saveOutfit();
+      }
+    });
+  }
+}
+
+// Initialize everything
 initFaceMesh();
 renderProducts(); // Initialize product library
+
+// Initialize Virtual Closet when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initVirtualCloset);
+} else {
+  initVirtualCloset();
+}
