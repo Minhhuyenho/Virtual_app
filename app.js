@@ -17,6 +17,8 @@ let isUsingUploadedImage = false;
 let camera = null;
 let detectedLandmarks = null;
 let currentStream = null;
+let faceRotation = { roll: 0, pitch: 0, yaw: 0 }; // Face rotation angles in radians
+let referenceFaceSize = null; // Reference face size for distance calculation
 
 // Face mesh indices for different overlay types
 const FACE_LANDMARKS = {
@@ -69,12 +71,23 @@ function onResults(results) {
     : null;
   
   if (detectedLandmarks) {
+    // Calculate face rotation angles
+    faceRotation = calculateFaceRotation(detectedLandmarks);
+    
+    // Update reference face size for distance estimation
+    const faceBox = calculateFaceBox(detectedLandmarks, canvas.width, canvas.height);
+    const currentFaceSize = Math.sqrt(faceBox.width * faceBox.width + faceBox.height * faceBox.height);
+    if (!referenceFaceSize) {
+      referenceFaceSize = currentFaceSize;
+    }
+    
     status.textContent = 'Face detected ✓';
     status.className = 'status detected';
     draw();
   } else {
     status.textContent = 'No face detected';
     status.className = 'status';
+    referenceFaceSize = null; // Reset when face is lost
     if (!isUsingUploadedImage) {
       draw(); // Still draw video even if no face is detected
     }
@@ -124,6 +137,102 @@ function calculateDistance(p1, p2) {
   return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 }
 
+// Calculate 3D rotation angles from face landmarks
+function calculateFaceRotation(landmarks) {
+  if (!landmarks || landmarks.length < 468) return { roll: 0, pitch: 0, yaw: 0 };
+  
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  
+  // Key landmarks for rotation calculation
+  // Left eye outer corner: 33, Right eye outer corner: 263
+  // Left eye inner corner: 133, Right eye inner corner: 362
+  // Nose tip: 1, Forehead center: 10, Chin: 175
+  // Left cheek: 234, Right cheek: 454
+  // Left temple: 234, Right temple: 454
+  
+  const leftEyeOuter = getLandmark(landmarks, 33, canvasWidth, canvasHeight);
+  const rightEyeOuter = getLandmark(landmarks, 263, canvasWidth, canvasHeight);
+  const leftEyeInner = getLandmark(landmarks, 133, canvasWidth, canvasHeight);
+  const rightEyeInner = getLandmark(landmarks, 362, canvasWidth, canvasHeight);
+  const forehead = getLandmark(landmarks, 10, canvasWidth, canvasHeight);
+  const chin = getLandmark(landmarks, 175, canvasWidth, canvasHeight);
+  const noseTip = getLandmark(landmarks, 1, canvasWidth, canvasHeight);
+  const leftCheek = getLandmark(landmarks, 234, canvasWidth, canvasHeight);
+  const rightCheek = getLandmark(landmarks, 454, canvasWidth, canvasHeight);
+  
+  let roll = 0, pitch = 0, yaw = 0;
+  
+  // Calculate ROLL (head tilt left/right) - angle between eyes
+  if (leftEyeOuter && rightEyeOuter) {
+    const eyeAngle = Math.atan2(rightEyeOuter.y - leftEyeOuter.y, rightEyeOuter.x - leftEyeOuter.x);
+    roll = eyeAngle;
+  }
+  
+  // Calculate PITCH (head up/down) - using forehead to chin distance
+  if (forehead && chin && noseTip) {
+    // Vertical distance from forehead to chin
+    const verticalDistance = chin.y - forehead.y;
+    // Horizontal distance from nose to face center
+    const faceCenterX = (leftCheek && rightCheek) ? (leftCheek.x + rightCheek.x) / 2 : noseTip.x;
+    const horizontalDistance = Math.abs(noseTip.x - faceCenterX);
+    
+    if (verticalDistance > 0) {
+      // Calculate pitch based on vertical to horizontal ratio
+      pitch = Math.atan2(horizontalDistance, verticalDistance) * 0.3; // Dampened for stability
+    }
+    
+    // Also consider forehead-to-chin relative to eye level
+    const eyeLevel = leftEyeOuter && rightEyeOuter ? (leftEyeOuter.y + rightEyeOuter.y) / 2 : noseTip.y;
+    if (forehead && chin) {
+      const faceHeight = chin.y - forehead.y;
+      const noseOffset = noseTip.y - eyeLevel;
+      if (faceHeight > 0) {
+        pitch = (noseOffset / faceHeight) * Math.PI * 0.2; // Pitch in radians, dampened
+      }
+    }
+  }
+  
+  // Calculate YAW (head left/right turn) - using cheek symmetry
+  if (leftCheek && rightCheek && noseTip) {
+    const leftDistance = calculateDistance(noseTip, leftCheek);
+    const rightDistance = calculateDistance(noseTip, rightCheek);
+    const totalWidth = leftDistance + rightDistance;
+    
+    if (totalWidth > 0) {
+      // Normalize and convert to angle (-1 to 1 range)
+      const asymmetry = (rightDistance - leftDistance) / totalWidth;
+      yaw = asymmetry * Math.PI * 0.3; // Yaw in radians, limited to ±30 degrees
+    }
+  }
+  
+  // Smooth rotation values to reduce jitter
+  const smoothingFactor = 0.7;
+  const currentRoll = (faceRotation && faceRotation.roll !== undefined) ? faceRotation.roll : 0;
+  const currentPitch = (faceRotation && faceRotation.pitch !== undefined) ? faceRotation.pitch : 0;
+  const currentYaw = (faceRotation && faceRotation.yaw !== undefined) ? faceRotation.yaw : 0;
+  
+  faceRotation.roll = currentRoll * smoothingFactor + roll * (1 - smoothingFactor);
+  faceRotation.pitch = currentPitch * smoothingFactor + pitch * (1 - smoothingFactor);
+  faceRotation.yaw = currentYaw * smoothingFactor + yaw * (1 - smoothingFactor);
+  
+  return { roll: faceRotation.roll, pitch: faceRotation.pitch, yaw: faceRotation.yaw };
+}
+
+// Calculate distance-based scale factor
+function calculateDistanceScale() {
+  if (!referenceFaceSize || !detectedLandmarks) return 1.0;
+  
+  const faceBox = calculateFaceBox(detectedLandmarks, canvas.width, canvas.height);
+  const currentFaceSize = Math.sqrt(faceBox.width * faceBox.width + faceBox.height * faceBox.height);
+  
+  // Scale inversely proportional to face size (closer = larger face = larger overlay)
+  const scaleFactor = referenceFaceSize / currentFaceSize;
+  
+  // Clamp scale factor to reasonable range (0.5x to 2x)
+  return Math.max(0.5, Math.min(2.0, scaleFactor));
+}
+
 // Calculate overlay position based on face landmarks with automatic scaling
 function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   if (!landmarks || !type) return null;
@@ -132,7 +241,10 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   const canvasHeight = canvas.height;
   const faceBox = calculateFaceBox(landmarks, canvasWidth, canvasHeight);
   
-  let x, y, width, height;
+  // Get distance-based scale factor
+  const distanceScale = calculateDistanceScale();
+  
+  let x, y, width, height, centerX, centerY;
   
   // Base scale multipliers for each item type
   const baseScaleMultipliers = {
@@ -142,6 +254,8 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   };
   
   const baseMultiplier = baseScaleMultipliers[type] || 1.0;
+  // Combine manual scale, distance scale, and base multiplier
+  const totalScale = overlayScale * distanceScale * baseMultiplier;
 
   if (type === 'glasses') {
     // Use actual eye landmark positions for accurate sizing
@@ -152,25 +266,24 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     if (leftEye && rightEye) {
       // Calculate distance between eye corners
       const eyeDistance = calculateDistance(leftEye, rightEye);
-      // Use eye distance as base for glasses width, with multiplier for better fit
-      width = eyeDistance * overlayScale * baseMultiplier;
+      // Use eye distance as base for glasses width
+      width = eyeDistance * totalScale;
+      
+      // Calculate center position (will be rotation pivot point)
+      centerX = (leftEye.x + rightEye.x) / 2;
+      centerY = (leftEye.y + rightEye.y) / 2;
+      x = centerX - width / 2;
+      
+      height = (imgHeight / imgWidth) * width;
+      y = centerY - height * 0.4 + (canvasHeight * overlayOffsetY);
     } else {
       // Fallback to face box
-      width = faceBox.width * 0.6 * overlayScale * baseMultiplier;
-    }
-    
-    height = (imgHeight / imgWidth) * width;
-    
-    // Center horizontally on face
-    if (leftEye && rightEye) {
-      const eyeMidpointX = (leftEye.x + rightEye.x) / 2;
-      x = eyeMidpointX - width / 2;
-      
-      const eyeMidpointY = (leftEye.y + rightEye.y) / 2;
-      y = eyeMidpointY - height * 0.4 + (canvasHeight * overlayOffsetY);
-    } else {
-      x = faceBox.x + (faceBox.width - width) / 2;
-      y = faceBox.y + faceBox.height * 0.25 - height * 0.5 + (canvasHeight * overlayOffsetY);
+      width = faceBox.width * 0.6 * totalScale;
+      height = (imgHeight / imgWidth) * width;
+      centerX = faceBox.x + faceBox.width / 2;
+      centerY = faceBox.y + faceBox.height * 0.25;
+      x = centerX - width / 2;
+      y = centerY - height * 0.5 + (canvasHeight * overlayOffsetY);
     }
   } 
   else if (type === 'hat') {
@@ -180,9 +293,9 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     
     if (faceLeft && faceRight) {
       const faceWidth = calculateDistance(faceLeft, faceRight);
-      width = faceWidth * overlayScale * baseMultiplier;
+      width = faceWidth * totalScale;
     } else {
-      width = faceBox.width * overlayScale * baseMultiplier;
+      width = faceBox.width * totalScale;
     }
     
     height = (imgHeight / imgWidth) * width;
@@ -190,10 +303,14 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     // Get forehead top point
     const forehead = getLandmark(landmarks, 10, canvasWidth, canvasHeight); // Top of head
     if (forehead) {
-      x = (faceBox.x + faceBox.width / 2) - width / 2;
+      centerX = faceBox.x + faceBox.width / 2;
+      centerY = forehead.y;
+      x = centerX - width / 2;
       y = forehead.y - height * 0.7 + (canvasHeight * overlayOffsetY);
     } else {
-      x = faceBox.x + (faceBox.width - width) / 2;
+      centerX = faceBox.x + faceBox.width / 2;
+      centerY = faceBox.y;
+      x = centerX - width / 2;
       y = faceBox.y - height * 0.7 + (canvasHeight * overlayOffsetY);
     }
   }
@@ -204,9 +321,9 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     
     if (jawLeft && jawRight) {
       const jawWidth = calculateDistance(jawLeft, jawRight);
-      width = jawWidth * overlayScale * baseMultiplier;
+      width = jawWidth * totalScale;
     } else {
-      width = faceBox.width * overlayScale * baseMultiplier;
+      width = faceBox.width * totalScale;
     }
     
     height = (imgHeight / imgWidth) * width;
@@ -214,10 +331,14 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     // Position below chin
     const chin = getLandmark(landmarks, 175, canvasWidth, canvasHeight); // Chin point
     if (chin) {
-      x = faceBox.x + (faceBox.width - width) / 2;
+      centerX = faceBox.x + faceBox.width / 2;
+      centerY = chin.y;
+      x = centerX - width / 2;
       y = chin.y - height * 0.3 + (canvasHeight * overlayOffsetY);
     } else {
-      x = faceBox.x + (faceBox.width - width) / 2;
+      centerX = faceBox.x + faceBox.width / 2;
+      centerY = faceBox.y + faceBox.height * 0.6;
+      x = centerX - width / 2;
       y = faceBox.y + faceBox.height * 0.6 + (canvasHeight * overlayOffsetY);
     }
   }
@@ -225,7 +346,11 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     return null;
   }
 
-  return { x, y, width, height };
+  return { 
+    x, y, width, height, 
+    centerX: centerX || x + width / 2, 
+    centerY: centerY || y + height / 2 
+  };
 }
 
 // Calculate face bounding box from landmarks
@@ -249,6 +374,46 @@ function calculateFaceBox(landmarks, width, height) {
   };
 }
 
+// Draw rotated overlay using canvas transformations
+function drawRotatedOverlay(image, pos, rotation) {
+  if (!pos || !image || !rotation) return;
+  
+  // Ensure rotation values exist, default to 0
+  const roll = rotation.roll || 0;
+  const pitch = rotation.pitch || 0;
+  const yaw = rotation.yaw || 0;
+  
+  // Save current canvas state
+  ctx.save();
+  
+  // Move to rotation center and apply transformations
+  ctx.translate(pos.centerX, pos.centerY);
+  
+  // Apply rotations - roll is most important for 2D rotation (head tilt)
+  ctx.rotate(roll);
+  
+  // Apply perspective effects from pitch and yaw using scaling
+  // When looking up/down (pitch), scale vertically
+  // When looking left/right (yaw), apply horizontal scaling for perspective
+  const pitchScale = 1.0 + Math.sin(pitch) * 0.15;
+  const yawScale = 1.0 - Math.abs(yaw) * 0.25;
+  
+  // Apply scaling (yaw affects horizontal, pitch affects vertical)
+  ctx.scale(yawScale, pitchScale);
+  
+  // Draw image centered at origin (since we translated to center)
+  ctx.drawImage(
+    image,
+    -pos.width / 2,
+    -pos.height / 2,
+    pos.width,
+    pos.height
+  );
+  
+  // Restore canvas state
+  ctx.restore();
+}
+
 // Draw video/image + overlay with face detection
 function draw() {
   if (isUsingUploadedImage) {
@@ -259,7 +424,8 @@ function draw() {
       if (overlayImg && overlayImg.complete && overlaySrc && detectedLandmarks) {
         const pos = calculateOverlayPosition(overlayType, detectedLandmarks, overlayImg.width, overlayImg.height);
         if (pos) {
-          ctx.drawImage(overlayImg, pos.x, pos.y, pos.width, pos.height);
+          // Draw with rotation transformation
+          drawRotatedOverlay(overlayImg, pos, faceRotation);
         }
       }
     }
@@ -272,7 +438,8 @@ function draw() {
       if (overlayImg && overlayImg.complete && overlaySrc && detectedLandmarks) {
         const pos = calculateOverlayPosition(overlayType, detectedLandmarks, overlayImg.width, overlayImg.height);
         if (pos) {
-          ctx.drawImage(overlayImg, pos.x, pos.y, pos.width, pos.height);
+          // Draw with rotation transformation
+          drawRotatedOverlay(overlayImg, pos, faceRotation);
         }
       }
     }
