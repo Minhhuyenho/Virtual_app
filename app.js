@@ -22,6 +22,20 @@ let referenceFaceSize = null; // Reference face size for distance calculation
 let referenceEyeDistance = null; // Reference eye distance for scaling glasses
 let referenceFaceWidth = null; // Reference face width for scaling hats/shirts
 
+// Lighting adaptation system
+let lightingAnalysis = {
+  brightness: 1.0,      // 0.0 (dark) to 2.0 (bright)
+  contrast: 1.0,        // 0.0 to 2.0
+  saturation: 1.0,      // 0.0 (grayscale) to 2.0 (vibrant)
+  temperature: 6500,    // Color temperature in Kelvin (2000-10000)
+  enabled: true         // Enable/disable lighting adaptation
+};
+
+let targetLighting = { ...lightingAnalysis }; // Target values for smooth transitions
+let lightingSampleCanvas = null; // Hidden canvas for lighting analysis
+let lightingSampleCtx = null;
+let frameCount = 0; // Frame counter for performance throttling
+
 // Face mesh indices for different overlay types
 const FACE_LANDMARKS = {
   glasses: {
@@ -37,6 +51,15 @@ const FACE_LANDMARKS = {
     top: 152, bottom: 175, left: 234, right: 454
   }
 };
+
+// Initialize lighting analysis canvas
+function initLightingAnalysis() {
+  // Create a small canvas for efficient lighting sampling
+  lightingSampleCanvas = document.createElement('canvas');
+  lightingSampleCanvas.width = 64;  // Low resolution for performance
+  lightingSampleCanvas.height = 64;
+  lightingSampleCtx = lightingSampleCanvas.getContext('2d', { willReadFrequently: true });
+}
 
 // Initialize MediaPipe Face Mesh
 function initFaceMesh() {
@@ -63,6 +86,7 @@ function initFaceMesh() {
   faceMesh = faceMeshModel;
   status.textContent = 'Ready - No face detected';
   status.className = 'status';
+  initLightingAnalysis(); // Initialize lighting system
   startCamera();
 }
 
@@ -527,7 +551,181 @@ function calculateFaceBox(landmarks, width, height) {
   };
 }
 
-// Draw rotated overlay using canvas transformations
+/**
+ * Analyze lighting from video frame
+ * Samples the face region and surrounding area to detect brightness and color temperature
+ */
+function analyzeLighting(sourceImage, faceBox) {
+  if (!lightingSampleCtx || !sourceImage) return;
+  
+  try {
+    // Resize source to sample canvas for efficient analysis
+    lightingSampleCtx.clearRect(0, 0, lightingSampleCanvas.width, lightingSampleCanvas.height);
+    lightingSampleCtx.drawImage(
+      sourceImage,
+      0, 0, sourceImage.width, sourceImage.height,
+      0, 0, lightingSampleCanvas.width, lightingSampleCanvas.height
+    );
+    
+    // Sample pixels from the face region (if detected) or center region
+    const sampleSize = Math.min(lightingSampleCanvas.width, lightingSampleCanvas.height);
+    const centerX = faceBox ? (faceBox.x / canvas.width) * lightingSampleCanvas.width : lightingSampleCanvas.width / 2;
+    const centerY = faceBox ? (faceBox.y / canvas.height) * lightingSampleCanvas.height : lightingSampleCanvas.height / 2;
+    const sampleRadius = sampleSize * 0.3;
+    
+    const imageData = lightingSampleCtx.getImageData(
+      Math.max(0, centerX - sampleRadius),
+      Math.max(0, centerY - sampleRadius),
+      Math.min(sampleRadius * 2, lightingSampleCanvas.width - (centerX - sampleRadius)),
+      Math.min(sampleRadius * 2, lightingSampleCanvas.height - (centerY - sampleRadius))
+    );
+    
+    const data = imageData.data;
+    let totalR = 0, totalG = 0, totalB = 0;
+    let maxBrightness = 0;
+    let minBrightness = 255;
+    let pixelCount = 0;
+    
+    // Analyze each pixel
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      
+      // Calculate brightness (luminance)
+      const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+      maxBrightness = Math.max(maxBrightness, brightness);
+      minBrightness = Math.min(minBrightness, brightness);
+      
+      totalR += r;
+      totalG += g;
+      totalB += b;
+      pixelCount++;
+    }
+    
+    if (pixelCount === 0) return;
+    
+    // Calculate average RGB
+    const avgR = totalR / pixelCount;
+    const avgG = totalG / pixelCount;
+    const avgB = totalB / pixelCount;
+    const avgBrightness = (maxBrightness + minBrightness) / 2;
+    const contrastRange = maxBrightness - minBrightness;
+    
+    // Calculate brightness adjustment (normalize to 0-1 range, then scale)
+    const brightnessRatio = avgBrightness / 128; // 128 is middle gray
+    targetLighting.brightness = Math.max(0.5, Math.min(1.5, brightnessRatio));
+    
+    // Calculate contrast (based on dynamic range)
+    const contrastRatio = contrastRange / 128;
+    targetLighting.contrast = Math.max(0.8, Math.min(1.3, 0.9 + contrastRatio * 0.4));
+    
+    // Calculate saturation (colorfulness)
+    const colorVariance = Math.sqrt(
+      Math.pow(avgR - avgBrightness, 2) +
+      Math.pow(avgG - avgBrightness, 2) +
+      Math.pow(avgB - avgBrightness, 2)
+    ) / 128;
+    targetLighting.saturation = Math.max(0.7, Math.min(1.3, 0.9 + colorVariance * 0.4));
+    
+    // Calculate color temperature from RGB balance
+    // Warmer (red/yellow) = lower temp, Cooler (blue) = higher temp
+    const colorBalance = avgR > avgB ? (avgR / (avgR + avgB)) : (avgB / (avgR + avgB));
+    // Map to color temperature range (2000K-10000K)
+    targetLighting.temperature = 4000 + (colorBalance * 4000); // Adjust range as needed
+    
+    // Smooth transitions to avoid flickering
+    const smoothingFactor = 0.85; // Higher = slower transitions
+    lightingAnalysis.brightness = lightingAnalysis.brightness * smoothingFactor + targetLighting.brightness * (1 - smoothingFactor);
+    lightingAnalysis.contrast = lightingAnalysis.contrast * smoothingFactor + targetLighting.contrast * (1 - smoothingFactor);
+    lightingAnalysis.saturation = lightingAnalysis.saturation * smoothingFactor + targetLighting.saturation * (1 - smoothingFactor);
+    lightingAnalysis.temperature = lightingAnalysis.temperature * smoothingFactor + targetLighting.temperature * (1 - smoothingFactor);
+    
+  } catch (err) {
+    // Silently fail if analysis encounters issues
+    console.warn('Lighting analysis error:', err);
+  }
+}
+
+/**
+ * Apply lighting adaptation to an image using canvas filters
+ * Returns a filtered image element
+ */
+function applyLightingAdaptation(image) {
+  if (!lightingAnalysis.enabled || !image) return image;
+  
+  // Create temporary canvas for lighting effects
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = image.width;
+  tempCanvas.height = image.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  
+  // Draw original image
+  tempCtx.drawImage(image, 0, 0);
+  
+  // Get image data
+  const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+  const data = imageData.data;
+  
+  // Apply lighting adjustments
+  const brightness = lightingAnalysis.brightness;
+  const contrast = lightingAnalysis.contrast;
+  const saturation = lightingAnalysis.saturation;
+  const tempAdjustment = (lightingAnalysis.temperature - 6500) / 6500; // Normalize around 6500K
+  
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+    
+    // Apply brightness
+    r = r * brightness;
+    g = g * brightness;
+    b = b * brightness;
+    
+    // Apply contrast
+    const contrastFactor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+    r = contrastFactor * (r - 128) + 128;
+    g = contrastFactor * (g - 128) + 128;
+    b = contrastFactor * (b - 128) + 128;
+    
+    // Apply color temperature (warm/cool shift)
+    if (tempAdjustment > 0) {
+      // Cooler (add blue, reduce red)
+      r = r * (1 - tempAdjustment * 0.3);
+      b = b * (1 + tempAdjustment * 0.3);
+    } else {
+      // Warmer (add red/yellow, reduce blue)
+      r = r * (1 - tempAdjustment * 0.3);
+      g = g * (1 - tempAdjustment * 0.2);
+      b = b * (1 + tempAdjustment * 0.3);
+    }
+    
+    // Apply saturation
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = gray + (r - gray) * saturation;
+    g = gray + (g - gray) * saturation;
+    b = gray + (b - gray) * saturation;
+    
+    // Clamp values
+    data[i] = Math.max(0, Math.min(255, r));
+    data[i + 1] = Math.max(0, Math.min(255, g));
+    data[i + 2] = Math.max(0, Math.min(255, b));
+  }
+  
+  // Put modified data back
+  tempCtx.putImageData(imageData, 0, 0);
+  
+  // Create new image from canvas
+  const adaptedImage = new Image();
+  adaptedImage.src = tempCanvas.toDataURL();
+  adaptedImage.width = image.width;
+  adaptedImage.height = image.height;
+  
+  return adaptedImage;
+}
+
+// Draw rotated overlay using canvas transformations with lighting adaptation
 function drawRotatedOverlay(image, pos, rotation) {
   if (!pos || !image || !rotation) return;
   
@@ -554,6 +752,37 @@ function drawRotatedOverlay(image, pos, rotation) {
   // Apply scaling (yaw affects horizontal, pitch affects vertical)
   ctx.scale(yawScale, pitchScale);
   
+  // Apply lighting adaptation filters if enabled
+  if (lightingAnalysis.enabled) {
+    // Use globalCompositeOperation for blending modes
+    ctx.globalCompositeOperation = 'source-over';
+    
+    // Apply brightness and contrast using filter operations
+    ctx.filter = `brightness(${lightingAnalysis.brightness}) contrast(${lightingAnalysis.contrast}) saturate(${lightingAnalysis.saturation})`;
+    
+    // For color temperature, we'll use a color matrix approach via globalCompositeOperation
+    // This is more performant than pixel-by-pixel manipulation
+    const tempRatio = (lightingAnalysis.temperature - 6500) / 6500;
+    
+    // Create a color overlay for temperature adjustment
+    if (Math.abs(tempRatio) > 0.05) { // Only apply if significant change
+      const tempAlpha = Math.abs(tempRatio) * 0.3; // Subtle effect
+      if (tempRatio > 0) {
+        // Cooler (blue tint)
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(150, 180, 255, ${tempAlpha})`;
+        ctx.fillRect(-pos.width / 2, -pos.height / 2, pos.width, pos.height);
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        // Warmer (orange/yellow tint)
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = `rgba(255, 220, 180, ${Math.abs(tempAlpha)})`;
+        ctx.fillRect(-pos.width / 2, -pos.height / 2, pos.width, pos.height);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+  }
+  
   // Draw image centered at origin (since we translated to center)
   ctx.drawImage(
     image,
@@ -563,21 +792,37 @@ function drawRotatedOverlay(image, pos, rotation) {
     pos.height
   );
   
+  // Reset filter
+  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'source-over';
+  
   // Restore canvas state
   ctx.restore();
 }
 
-// Draw video/image + overlay with face detection
+// Draw video/image + overlay with face detection and lighting adaptation
 function draw() {
+  let faceBox = null;
+  
   if (isUsingUploadedImage) {
     if (uploadedImg.complete && uploadedImg.naturalWidth > 0) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(uploadedImg, 0, 0, canvas.width, canvas.height);
       
+      // Analyze lighting from uploaded image (throttled for performance)
+      if (detectedLandmarks && lightingAnalysis.enabled) {
+        faceBox = calculateFaceBox(detectedLandmarks, canvas.width, canvas.height);
+        // Analyze every 5 frames (20% frequency) for performance
+        if (frameCount % 5 === 0) {
+          analyzeLighting(uploadedImg, faceBox);
+        }
+      }
+      frameCount++;
+      
       if (overlayImg && overlayImg.complete && overlaySrc && detectedLandmarks) {
         const pos = calculateOverlayPosition(overlayType, detectedLandmarks, overlayImg.width, overlayImg.height);
         if (pos) {
-          // Draw with rotation transformation
+          // Draw with rotation transformation and lighting adaptation
           drawRotatedOverlay(overlayImg, pos, faceRotation);
         }
       }
@@ -588,10 +833,20 @@ function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Analyze lighting from video feed (throttled for performance)
+      if (detectedLandmarks && lightingAnalysis.enabled) {
+        faceBox = calculateFaceBox(detectedLandmarks, canvas.width, canvas.height);
+        // Analyze every 3 frames (~33% frequency) for real-time performance
+        if (frameCount % 3 === 0) {
+          analyzeLighting(video, faceBox);
+        }
+      }
+      frameCount++;
+
       if (overlayImg && overlayImg.complete && overlaySrc && detectedLandmarks) {
         const pos = calculateOverlayPosition(overlayType, detectedLandmarks, overlayImg.width, overlayImg.height);
         if (pos) {
-          // Draw with rotation transformation
+          // Draw with rotation transformation and lighting adaptation
           drawRotatedOverlay(overlayImg, pos, faceRotation);
         }
       }
