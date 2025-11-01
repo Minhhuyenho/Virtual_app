@@ -5,55 +5,115 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>VirtualStyle - Try On Prototype</title>
 <link rel="stylesheet" href="style.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @media (max-width: 768px) {
+    .product-library {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      z-index: 50;
+    }
+    .product-library.open {
+      transform: translateY(0);
+    }
+  }
+</style>
 </head>
-<body>
-  <div class="app">
-    <div class="top-bar">
-      <h1>VirtualStyle</h1>
-      <div class="top-buttons">
-        <button id="captureBtn">📷 Take Photo</button>
+<body class="bg-gray-900 text-white">
+  <div class="flex flex-col lg:flex-row min-h-screen">
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col items-center gap-3 p-3 lg:max-w-2xl">
+      <!-- Top Bar with Cart -->
+      <div class="w-full max-w-lg flex justify-between items-center mb-2">
+        <h1 class="text-xl font-bold">VirtualStyle</h1>
+        <div class="flex items-center gap-2">
+          <button id="cartBtn" class="relative bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition">
+            🛒
+            <span id="cartBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
+          </button>
+          <button id="captureBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm">📷 Take Photo</button>
+        </div>
+      </div>
+
+      <!-- Camera/Canvas Area -->
+      <div class="relative w-full max-w-lg aspect-[9/16] bg-gray-800 rounded-xl overflow-hidden">
+        <video id="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
+        <canvas id="canvas" class="absolute inset-0 w-full h-full"></canvas>
+        <img id="uploadedImg" style="display: none;" class="absolute inset-0 w-full h-full object-cover" />
+        <div class="status absolute top-2 left-2 bg-black/70 px-2 py-1 rounded text-xs z-10" id="status">Initializing face detection...</div>
+      </div>
+
+      <!-- Controls -->
+      <div class="w-full max-w-lg">
+        <div class="flex flex-col gap-2 mb-3">
+          <button id="saveBtn" class="bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg w-full">💾 Save Image</button>
+          <button id="backToCameraBtn" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full" style="display: none;">📷 Back to Camera</button>
+        </div>
+        
+        <!-- Quick Select Thumbnails (Legacy - can hide on larger screens) -->
+        <div class="thumbnails hidden md:flex gap-2 flex-wrap justify-center mb-3">
+          <button class="thumb bg-white text-black px-3 py-1 rounded-lg text-sm hover:bg-gray-200" data-src="" data-type="">Remove</button>
+        </div>
+        
+        <div class="bg-gray-800 p-4 rounded-lg">
+          <label class="block text-sm mb-2">Size Scale
+            <input id="scale" type="range" min="0.5" max="2.5" step="0.05" value="1.0" class="w-full mt-1">
+          </label>
+          <label class="block text-sm mb-2">Vertical Offset
+            <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="0.0" class="w-full mt-1">
+          </label>
+          <p class="text-xs text-gray-400 text-center mt-2">💡 Tip: Adjust scale (0.5x - 2.5x) to fit your face perfectly!</p>
+        </div>
       </div>
     </div>
 
-    <div class="camera-wrap">
-      <video id="video" autoplay playsinline></video>
-      <canvas id="canvas"></canvas>
-      <img id="uploadedImg" style="display: none;" />
-      <div class="status" id="status">Initializing face detection...</div>
+    <!-- Product Library Panel -->
+    <div class="product-library lg:w-80 xl:w-96 bg-gray-800 lg:h-screen lg:overflow-y-auto border-l border-gray-700">
+      <div class="sticky top-0 bg-gray-800 border-b border-gray-700 p-4 z-10">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-semibold">Product Library</h2>
+          <button id="closeLibraryBtn" class="lg:hidden text-gray-400 hover:text-white">✕</button>
+        </div>
+        <div class="flex gap-2">
+          <button class="filter-btn active px-3 py-1 rounded bg-blue-600 text-sm" data-category="all">All</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="glasses">Glasses</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="hat">Hats</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="shirt">Clothing</button>
+        </div>
+      </div>
+      
+      <div id="productGrid" class="p-4 grid grid-cols-1 gap-4">
+        <!-- Products will be inserted here -->
+      </div>
+      
+      <!-- Mobile Toggle Button -->
+      <button id="toggleLibraryBtn" class="lg:hidden fixed bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg z-40">
+        📦
+      </button>
     </div>
+  </div>
 
-    <div class="controls">
-      <div class="action-buttons">
-        <button id="saveBtn" class="save-btn">💾 Save Image</button>
-        <button id="backToCameraBtn" class="back-btn" style="display: none;">📷 Back to Camera</button>
+  <!-- Shopping Cart Modal -->
+  <div id="cartModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-800 rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+      <div class="flex justify-between items-center p-4 border-b border-gray-700">
+        <h2 class="text-xl font-semibold">Shopping Cart</h2>
+        <button id="closeCartBtn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
       </div>
-      <div class="thumbnails">
-        <button class="thumb" data-src="assets/glasses.png" data-type="glasses">Glasses</button>
-        <button class="thumb" data-src="assets/hat.png" data-type="hat">Hat</button>
-        <button class="thumb" data-src="assets/shirt.png" data-type="shirt">Shirt</button>
-        <button class="thumb" data-src="assets/hello_kitty_glasses.png" data-type="glasses">Hello Kitty Glasses</button>
-        <button class="thumb" data-src="assets/oval_black_glasses.png" data-type="glasses">Oval Black Glasses</button>
-        <button class="thumb" data-src="assets/round_black_glasses.png" data-type="glasses">Round Black Glasses</button>
-        <button class="thumb" data-src="assets/square_red_glasses.png" data-type="glasses">Square Red Glasses</button>
-        <button class="thumb" data-src="assets/eyelash.png" data-type="glasses">Eyelash</button>
-        <button class="thumb" data-src="assets/blue_woolen_hat.png" data-type="hat">Blue Woolen Hat</button>
-        <button class="thumb" data-src="assets/long_braided_hair.png" data-type="hat">Long Braided Hair</button>
-        <button class="thumb" data-src="assets/long_curved_hair.png" data-type="hat">Long Curved Hair</button>
-        <button class="thumb" data-src="assets/black_office_wear_women.png" data-type="shirt">Black Office Wear</button>
-        <button class="thumb" data-src="assets/green_office_wear_winter_women.png" data-type="shirt">Green Office Wear</button>
-        <button class="thumb" data-src="assets/navy_suit_man.png" data-type="shirt">Navy Suit</button>
-        <button class="thumb" data-src="assets/office_wear_women.png" data-type="shirt">Office Wear</button>
-        <button class="thumb" data-src="assets/pink_bodycon_dress.png" data-type="shirt">Pink Bodycon Dress</button>
-        <button class="thumb" data-src="assets/pink_suit_man.png" data-type="shirt">Pink Suit</button>
-        <button class="thumb" data-src="assets/suit_with_bow_tie.png" data-type="shirt">Suit with Bow Tie</button>
-        <button class="thumb" data-src="assets/white_dress.png" data-type="shirt">White Dress</button>
-        <button class="thumb" data-src="" data-type="">Remove</button>
+      <div id="cartItems" class="flex-1 overflow-y-auto p-4">
+        <p class="text-gray-400 text-center py-8">Your cart is empty</p>
       </div>
-      <div class="sliders">
-        <label>Size Scale <input id="scale" type="range" min="0.5" max="2.5" step="0.05" value="1.0"></label>
-        <label>Vertical Offset <input id="offY" type="range" min="-0.5" max="0.5" step="0.01" value="0.0"></label>
+      <div class="border-t border-gray-700 p-4">
+        <div class="flex justify-between items-center mb-4">
+          <span class="font-semibold">Total:</span>
+          <span id="cartTotal" class="text-xl font-bold">$0.00</span>
+        </div>
+        <button id="checkoutBtn" class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>Checkout</button>
       </div>
-      <div class="info-text">💡 Tip: Adjust scale (0.5x - 2.5x) to fit your face perfectly!</div>
     </div>
   </div>
 

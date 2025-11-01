@@ -156,15 +156,21 @@ async function startCamera() {
     });
     video.srcObject = stream;
     currentStream = stream;
-    canvas.width = 360;
-    canvas.height = 640;
+    
+    // Get container dimensions for responsive sizing
+    const container = video.parentElement;
+    const containerWidth = container.clientWidth || 360;
+    const containerHeight = container.clientHeight || Math.round(containerWidth * 16/9);
+    
+    canvas.width = containerWidth;
+    canvas.height = containerHeight;
     
     camera = new Camera(video, {
       onFrame: async () => {
         await faceMesh.send({ image: video });
       },
-      width: 360,
-      height: 640
+      width: containerWidth,
+      height: containerHeight
     });
     camera.start();
     status.textContent = 'Camera ready - Face detection active';
@@ -953,7 +959,262 @@ function downloadImage() {
   }
 }
 
-// Thumbnail buttons
+// Product Library and Shopping Cart System
+let shoppingCart = [];
+let currentCategory = 'all';
+
+// Product data structure
+const products = [
+  { id: 1, name: 'Classic Glasses', src: 'assets/glasses.png', type: 'glasses', category: 'glasses', price: 29.99 },
+  { id: 2, name: 'Classic Hat', src: 'assets/hat.png', type: 'hat', category: 'hat', price: 24.99 },
+  { id: 3, name: 'Classic Shirt', src: 'assets/shirt.png', type: 'shirt', category: 'shirt', price: 39.99 },
+  { id: 4, name: 'Hello Kitty Glasses', src: 'assets/hello_kitty_glasses.png', type: 'glasses', category: 'glasses', price: 34.99 },
+  { id: 5, name: 'Oval Black Glasses', src: 'assets/oval_black_glasses.png', type: 'glasses', category: 'glasses', price: 49.99 },
+  { id: 6, name: 'Round Black Glasses', src: 'assets/round_black_glasses.png', type: 'glasses', category: 'glasses', price: 44.99 },
+  { id: 7, name: 'Square Red Glasses', src: 'assets/square_red_glasses.png', type: 'glasses', category: 'glasses', price: 39.99 },
+  { id: 8, name: 'Eyelash', src: 'assets/eyelash.png', type: 'glasses', category: 'glasses', price: 14.99 },
+  { id: 9, name: 'Blue Woolen Hat', src: 'assets/blue_woolen_hat.png', type: 'hat', category: 'hat', price: 29.99 },
+  { id: 10, name: 'Long Braided Hair', src: 'assets/long_braided_hair.png', type: 'hat', category: 'hat', price: 54.99 },
+  { id: 11, name: 'Long Curved Hair', src: 'assets/long_curved_hair.png', type: 'hat', category: 'hat', price: 49.99 },
+  { id: 12, name: 'Black Office Wear', src: 'assets/black_office_wear_women.png', type: 'shirt', category: 'shirt', price: 79.99 },
+  { id: 13, name: 'Green Office Wear', src: 'assets/green_office_wear_winter_women.png', type: 'shirt', category: 'shirt', price: 89.99 },
+  { id: 14, name: 'Navy Suit', src: 'assets/navy_suit_man.png', type: 'shirt', category: 'shirt', price: 129.99 },
+  { id: 15, name: 'Office Wear', src: 'assets/office_wear_women.png', type: 'shirt', category: 'shirt', price: 69.99 },
+  { id: 16, name: 'Pink Bodycon Dress', src: 'assets/pink_bodycon_dress.png', type: 'shirt', category: 'shirt', price: 59.99 },
+  { id: 17, name: 'Pink Suit', src: 'assets/pink_suit_man.png', type: 'shirt', category: 'shirt', price: 119.99 },
+  { id: 18, name: 'Suit with Bow Tie', src: 'assets/suit_with_bow_tie.png', type: 'shirt', category: 'shirt', price: 149.99 },
+  { id: 19, name: 'White Dress', src: 'assets/white_dress.png', type: 'shirt', category: 'shirt', price: 49.99 }
+];
+
+// Apply product to try-on (used by both thumbnail buttons and product library)
+function applyProduct(src, type) {
+  // Remove active state from all thumbnails and product cards
+  document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.product-card').forEach(card => {
+    card.classList.remove('ring-2', 'ring-blue-500');
+  });
+  
+  // Find and activate matching product card
+  if (src) {
+    const productCard = document.querySelector(`[data-product-src="${src}"]`);
+    if (productCard) {
+      productCard.classList.add('ring-2', 'ring-blue-500');
+    }
+  }
+  
+  if (!src) {
+    overlaySrc = '';
+    overlayType = '';
+    overlayImg = null;
+    draw();
+    return;
+  }
+  
+  overlayImg = new Image();
+  overlayImg.onload = () => { 
+    overlaySrc = src;
+    overlayType = type;
+    draw();
+  };
+  overlayImg.src = src;
+}
+
+// Render products in library
+function renderProducts(category = 'all') {
+  const productGrid = document.getElementById('productGrid');
+  const filteredProducts = category === 'all' 
+    ? products 
+    : products.filter(p => p.category === category);
+  
+  productGrid.innerHTML = filteredProducts.map(product => `
+    <div class="bg-gray-700 rounded-lg p-3 hover:bg-gray-600 transition cursor-pointer product-card" data-product-src="${product.src}">
+      <div class="flex gap-3">
+        <img src="${product.src}" alt="${product.name}" class="w-20 h-20 object-contain bg-gray-800 rounded" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27200%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27200%27/%3E%3Ctext fill=%27%23999%27 font-family=%27sans-serif%27 font-size=%2714%27 dy=%2710.5%27 font-weight=%27bold%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27%3ENo Image%3C/text%3E%3C/svg%3E';">
+        <div class="flex-1">
+          <h3 class="font-semibold text-sm mb-1">${product.name}</h3>
+          <p class="text-xs text-gray-400 mb-2">${product.category.charAt(0).toUpperCase() + product.category.slice(1)}</p>
+          <div class="flex items-center justify-between">
+            <span class="text-green-400 font-bold">$${product.price.toFixed(2)}</span>
+            <div class="flex gap-2">
+              <button class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs try-on-btn" data-src="${product.src}" data-type="${product.type}">
+                Try On
+              </button>
+              <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs add-to-cart-btn" data-product-id="${product.id}">
+                + Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Add event listeners
+  document.querySelectorAll('.try-on-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const src = btn.dataset.src;
+      const type = btn.dataset.type;
+      applyProduct(src, type);
+    });
+  });
+  
+  document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const productId = parseInt(btn.dataset.productId);
+      addToCart(productId);
+    });
+  });
+  
+  // Click on product card to try on
+  document.querySelectorAll('.product-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('add-to-cart-btn') && !e.target.classList.contains('try-on-btn')) {
+        const src = card.dataset.productSrc;
+        const product = products.find(p => p.src === src);
+        if (product) {
+          applyProduct(src, product.type);
+        }
+      }
+    });
+  });
+}
+
+// Add to cart
+function addToCart(productId) {
+  const product = products.find(p => p.id === productId);
+  if (!product) return;
+  
+  shoppingCart.push({ ...product, cartId: Date.now() });
+  updateCartUI();
+  
+  // Show notification
+  const btn = document.querySelector(`[data-product-id="${productId}"]`);
+  if (btn) {
+    const originalText = btn.textContent;
+    btn.textContent = '✓ Added';
+    btn.classList.add('bg-green-500');
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.classList.remove('bg-green-500');
+    }, 1500);
+  }
+}
+
+// Remove from cart
+function removeFromCart(cartId) {
+  shoppingCart = shoppingCart.filter(item => item.cartId !== cartId);
+  updateCartUI();
+}
+
+// Update cart UI
+function updateCartUI() {
+  const cartBadge = document.getElementById('cartBadge');
+  const cartItems = document.getElementById('cartItems');
+  const cartTotal = document.getElementById('cartTotal');
+  const checkoutBtn = document.getElementById('checkoutBtn');
+  
+  // Update badge
+  const itemCount = shoppingCart.length;
+  if (itemCount > 0) {
+    cartBadge.textContent = itemCount;
+    cartBadge.classList.remove('hidden');
+  } else {
+    cartBadge.classList.add('hidden');
+  }
+  
+  // Update cart items
+  if (shoppingCart.length === 0) {
+    cartItems.innerHTML = '<p class="text-gray-400 text-center py-8">Your cart is empty</p>';
+    checkoutBtn.disabled = true;
+  } else {
+    const total = shoppingCart.reduce((sum, item) => sum + item.price, 0);
+    cartItems.innerHTML = shoppingCart.map(item => `
+      <div class="flex items-center gap-3 p-3 bg-gray-700 rounded-lg mb-2">
+        <img src="${item.src}" alt="${item.name}" class="w-16 h-16 object-contain bg-gray-800 rounded">
+        <div class="flex-1">
+          <h4 class="font-semibold text-sm">${item.name}</h4>
+          <p class="text-green-400 font-bold">$${item.price.toFixed(2)}</p>
+        </div>
+        <button class="remove-from-cart-btn text-red-400 hover:text-red-300 px-2" data-cart-id="${item.cartId}">
+          ✕
+        </button>
+      </div>
+    `).join('');
+    
+    cartTotal.textContent = `$${total.toFixed(2)}`;
+    checkoutBtn.disabled = false;
+    
+    // Add remove listeners
+    document.querySelectorAll('.remove-from-cart-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cartId = parseInt(btn.dataset.cartId);
+        removeFromCart(cartId);
+      });
+    });
+  }
+}
+
+// Category filter
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.remove('active', 'bg-blue-600');
+      b.classList.add('bg-gray-700');
+    });
+    btn.classList.add('active', 'bg-blue-600');
+    btn.classList.remove('bg-gray-700');
+    currentCategory = btn.dataset.category;
+    renderProducts(currentCategory);
+  });
+});
+
+// Cart modal
+const cartBtn = document.getElementById('cartBtn');
+const cartModal = document.getElementById('cartModal');
+const closeCartBtn = document.getElementById('closeCartBtn');
+
+cartBtn.addEventListener('click', () => {
+  cartModal.classList.remove('hidden');
+});
+
+closeCartBtn.addEventListener('click', () => {
+  cartModal.classList.add('hidden');
+});
+
+cartModal.addEventListener('click', (e) => {
+  if (e.target === cartModal) {
+    cartModal.classList.add('hidden');
+  }
+});
+
+// Checkout
+document.getElementById('checkoutBtn').addEventListener('click', () => {
+  if (shoppingCart.length > 0) {
+    alert(`Checkout complete! ${shoppingCart.length} item(s) for $${shoppingCart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}`);
+    // In a real app, you would redirect to checkout or send data to backend
+  }
+});
+
+// Mobile library toggle
+const toggleLibraryBtn = document.getElementById('toggleLibraryBtn');
+const closeLibraryBtn = document.getElementById('closeLibraryBtn');
+const productLibrary = document.querySelector('.product-library');
+
+if (toggleLibraryBtn) {
+  toggleLibraryBtn.addEventListener('click', () => {
+    productLibrary.classList.add('open');
+  });
+}
+
+if (closeLibraryBtn) {
+  closeLibraryBtn.addEventListener('click', () => {
+    productLibrary.classList.remove('open');
+  });
+}
+
+// Thumbnail buttons (legacy support)
 document.querySelectorAll('.thumb').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
@@ -961,22 +1222,7 @@ document.querySelectorAll('.thumb').forEach(btn => {
     
     const src = btn.dataset.src;
     const type = btn.dataset.type;
-    
-    if (!src) {
-      overlaySrc = '';
-      overlayType = '';
-      overlayImg = null;
-      draw();
-      return;
-    }
-    
-    overlayImg = new Image();
-    overlayImg.onload = () => { 
-      overlaySrc = src;
-      overlayType = type;
-      draw();
-    };
-    overlayImg.src = src;
+    applyProduct(src, type);
   });
 });
 
@@ -1022,3 +1268,4 @@ function resetToCamera() {
 
 // Initialize
 initFaceMesh();
+renderProducts(); // Initialize product library
