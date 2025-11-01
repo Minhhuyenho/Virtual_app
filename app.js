@@ -19,6 +19,8 @@ let detectedLandmarks = null;
 let currentStream = null;
 let faceRotation = { roll: 0, pitch: 0, yaw: 0 }; // Face rotation angles in radians
 let referenceFaceSize = null; // Reference face size for distance calculation
+let referenceEyeDistance = null; // Reference eye distance for scaling glasses
+let referenceFaceWidth = null; // Reference face width for scaling hats/shirts
 
 // Face mesh indices for different overlay types
 const FACE_LANDMARKS = {
@@ -74,7 +76,31 @@ function onResults(results) {
     // Calculate face rotation angles
     faceRotation = calculateFaceRotation(detectedLandmarks);
     
-    // Update reference face size for distance estimation
+    // Update reference measurements for smart fitting
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    
+    // Store reference eye distance for glasses scaling
+    const leftEye = getLandmark(detectedLandmarks, 33, canvasWidth, canvasHeight);
+    const rightEye = getLandmark(detectedLandmarks, 263, canvasWidth, canvasHeight);
+    if (leftEye && rightEye) {
+      const currentEyeDistance = calculateDistance(leftEye, rightEye);
+      if (!referenceEyeDistance) {
+        referenceEyeDistance = currentEyeDistance;
+      }
+    }
+    
+    // Store reference face width for hats/shirts
+    const faceLeft = getLandmark(detectedLandmarks, 234, canvasWidth, canvasHeight);
+    const faceRight = getLandmark(detectedLandmarks, 454, canvasWidth, canvasHeight);
+    if (faceLeft && faceRight) {
+      const currentFaceWidth = calculateDistance(faceLeft, faceRight);
+      if (!referenceFaceWidth) {
+        referenceFaceWidth = currentFaceWidth;
+      }
+    }
+    
+    // Update reference face size for overall distance estimation
     const faceBox = calculateFaceBox(detectedLandmarks, canvas.width, canvas.height);
     const currentFaceSize = Math.sqrt(faceBox.width * faceBox.width + faceBox.height * faceBox.height);
     if (!referenceFaceSize) {
@@ -87,7 +113,10 @@ function onResults(results) {
   } else {
     status.textContent = 'No face detected';
     status.className = 'status';
-    referenceFaceSize = null; // Reset when face is lost
+    // Reset references when face is lost
+    referenceFaceSize = null;
+    referenceEyeDistance = null;
+    referenceFaceWidth = null;
     if (!isUsingUploadedImage) {
       draw(); // Still draw video even if no face is detected
     }
@@ -219,7 +248,47 @@ function calculateFaceRotation(landmarks) {
   return { roll: faceRotation.roll, pitch: faceRotation.pitch, yaw: faceRotation.yaw };
 }
 
-// Calculate distance-based scale factor
+// Calculate smart scale factor based on eye distance (primary for glasses)
+function calculateEyeDistanceScale() {
+  if (!referenceEyeDistance || !detectedLandmarks) return 1.0;
+  
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  const leftEye = getLandmark(detectedLandmarks, 33, canvasWidth, canvasHeight);
+  const rightEye = getLandmark(detectedLandmarks, 263, canvasWidth, canvasHeight);
+  
+  if (!leftEye || !rightEye) return 1.0;
+  
+  const currentEyeDistance = calculateDistance(leftEye, rightEye);
+  
+  // Scale based on eye distance ratio (maintains proportion across different faces and distances)
+  const scaleFactor = currentEyeDistance / referenceEyeDistance;
+  
+  // Clamp scale factor to reasonable range (0.4x to 2.5x)
+  return Math.max(0.4, Math.min(2.5, scaleFactor));
+}
+
+// Calculate smart scale factor based on face width (for hats and shirts)
+function calculateFaceWidthScale() {
+  if (!referenceFaceWidth || !detectedLandmarks) return 1.0;
+  
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  const faceLeft = getLandmark(detectedLandmarks, 234, canvasWidth, canvasHeight);
+  const faceRight = getLandmark(detectedLandmarks, 454, canvasWidth, canvasHeight);
+  
+  if (!faceLeft || !faceRight) return 1.0;
+  
+  const currentFaceWidth = calculateDistance(faceLeft, faceRight);
+  
+  // Scale based on face width ratio
+  const scaleFactor = currentFaceWidth / referenceFaceWidth;
+  
+  // Clamp scale factor to reasonable range (0.4x to 2.5x)
+  return Math.max(0.4, Math.min(2.5, scaleFactor));
+}
+
+// Calculate distance-based scale factor (fallback/overall)
 function calculateDistanceScale() {
   if (!referenceFaceSize || !detectedLandmarks) return 1.0;
   
@@ -233,7 +302,32 @@ function calculateDistanceScale() {
   return Math.max(0.5, Math.min(2.0, scaleFactor));
 }
 
-// Calculate overlay position based on face landmarks with automatic scaling
+/**
+ * Smart Fitting System for Virtual Try-On
+ * 
+ * This function implements intelligent automatic scaling and positioning:
+ * 
+ * 1. SCALING:
+ *    - Glasses: Uses eye distance (left/right eye corners) as primary reference
+ *    - Hats: Uses face width (temple-to-temple) as primary reference  
+ *    - Shirts: Uses jaw width as primary reference
+ * 
+ * 2. POSITIONING:
+ *    - Glasses: Aligned precisely with eye center (between inner/outer corners)
+ *    - Hats: Aligned with forehead landmark and face center
+ *    - Shirts: Aligned with chin landmark and body center
+ * 
+ * 3. CONTINUOUS UPDATES:
+ *    - Automatically adjusts as user moves closer/farther (distance-based scaling)
+ *    - Tracks rotation and applies perspective transformations
+ *    - Maintains proportions across different face sizes
+ * 
+ * @param {string} type - Overlay type: 'glasses', 'hat', or 'shirt'
+ * @param {Array} landmarks - MediaPipe face mesh landmarks (468 points)
+ * @param {number} imgWidth - Overlay image width
+ * @param {number} imgHeight - Overlay image height
+ * @returns {Object} Position and size data with rotation center points
+ */
 function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   if (!landmarks || !type) return null;
 
@@ -241,44 +335,59 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   const canvasHeight = canvas.height;
   const faceBox = calculateFaceBox(landmarks, canvasWidth, canvasHeight);
   
-  // Get distance-based scale factor
-  const distanceScale = calculateDistanceScale();
-  
   let x, y, width, height, centerX, centerY;
   
-  // Base scale multipliers for each item type
-  const baseScaleMultipliers = {
-    glasses: 1.8,  // Larger glasses by default
-    hat: 1.5,      // Larger hat by default
-    shirt: 2.0     // Larger shirt by default
+  // Smart fitting multipliers - calibrated for realistic proportions
+  const smartFittingMultipliers = {
+    glasses: 2.2,  // Eye distance multiplier for glasses
+    hat: 1.6,       // Face width multiplier for hats
+    shirt: 2.4      // Face width multiplier for shirts
   };
   
-  const baseMultiplier = baseScaleMultipliers[type] || 1.0;
-  // Combine manual scale, distance scale, and base multiplier
-  const totalScale = overlayScale * distanceScale * baseMultiplier;
+  const fittingMultiplier = smartFittingMultipliers[type] || 1.0;
 
   if (type === 'glasses') {
-    // Use actual eye landmark positions for accurate sizing
-    // Left eye outer corner (33) and right eye outer corner (263)
+    // SMART FITTING: Use eye distance as primary scale reference
     const leftEye = getLandmark(landmarks, 33, canvasWidth, canvasHeight);
     const rightEye = getLandmark(landmarks, 263, canvasWidth, canvasHeight);
+    const leftEyeInner = getLandmark(landmarks, 133, canvasWidth, canvasHeight);
+    const rightEyeInner = getLandmark(landmarks, 362, canvasWidth, canvasHeight);
     
     if (leftEye && rightEye) {
-      // Calculate distance between eye corners
+      // Calculate eye distance - primary scaling reference
       const eyeDistance = calculateDistance(leftEye, rightEye);
-      // Use eye distance as base for glasses width
-      width = eyeDistance * totalScale;
       
-      // Calculate center position (will be rotation pivot point)
+      // Use smart eye-distance-based scaling
+      const eyeScale = calculateEyeDistanceScale();
+      
+      // Calculate width based on eye distance with smart fitting
+      width = eyeDistance * fittingMultiplier * overlayScale * eyeScale;
+      
+      // Calculate precise center position aligned with eye level
       centerX = (leftEye.x + rightEye.x) / 2;
-      centerY = (leftEye.y + rightEye.y) / 2;
-      x = centerX - width / 2;
       
+      // Use eye center point for vertical alignment (between inner and outer corners)
+      let eyeCenterY;
+      if (leftEyeInner && rightEyeInner) {
+        const leftEyeCenter = (leftEye.y + leftEyeInner.y) / 2;
+        const rightEyeCenter = (rightEye.y + rightEyeInner.y) / 2;
+        eyeCenterY = (leftEyeCenter + rightEyeCenter) / 2;
+      } else {
+        eyeCenterY = (leftEye.y + rightEye.y) / 2;
+      }
+      
+      centerY = eyeCenterY;
+      
+      // Calculate aspect-ratio-preserved height
       height = (imgHeight / imgWidth) * width;
-      y = centerY - height * 0.4 + (canvasHeight * overlayOffsetY);
+      
+      // Position glasses centered on eyes, slightly above eye level
+      x = centerX - width / 2;
+      y = centerY - height * 0.45 + (canvasHeight * overlayOffsetY);
     } else {
-      // Fallback to face box
-      width = faceBox.width * 0.6 * totalScale;
+      // Fallback to face box if eyes not detected
+      const fallbackScale = calculateDistanceScale();
+      width = faceBox.width * 0.6 * fittingMultiplier * overlayScale * fallbackScale;
       height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
       centerY = faceBox.y + faceBox.height * 0.25;
@@ -287,27 +396,50 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     }
   } 
   else if (type === 'hat') {
-    // Use forehead points and face width
+    // SMART FITTING: Use face width as primary scale reference
     const faceLeft = getLandmark(landmarks, 234, canvasWidth, canvasHeight);  // Left temple
     const faceRight = getLandmark(landmarks, 454, canvasWidth, canvasHeight); // Right temple
+    const forehead = getLandmark(landmarks, 10, canvasWidth, canvasHeight); // Top of head
+    const leftEye = getLandmark(landmarks, 33, canvasWidth, canvasHeight);
+    const rightEye = getLandmark(landmarks, 263, canvasWidth, canvasHeight);
     
     if (faceLeft && faceRight) {
+      // Calculate face width - primary scaling reference
       const faceWidth = calculateDistance(faceLeft, faceRight);
-      width = faceWidth * totalScale;
+      
+      // Use smart face-width-based scaling
+      const faceScale = calculateFaceWidthScale();
+      
+      // Calculate width based on face width with smart fitting
+      width = faceWidth * fittingMultiplier * overlayScale * faceScale;
+      height = (imgHeight / imgWidth) * width;
+      
+      // Precise positioning aligned with forehead and face center
+      if (forehead) {
+        // Use forehead point as vertical reference
+        centerX = (faceLeft.x + faceRight.x) / 2;
+        centerY = forehead.y;
+        x = centerX - width / 2;
+        // Position hat above forehead
+        y = forehead.y - height * 0.75 + (canvasHeight * overlayOffsetY);
+      } else if (leftEye && rightEye) {
+        // Fallback: estimate forehead from eye position
+        const eyeMidpointY = (leftEye.y + rightEye.y) / 2;
+        centerX = (faceLeft.x + faceRight.x) / 2;
+        centerY = eyeMidpointY - faceBox.height * 0.15;
+        x = centerX - width / 2;
+        y = centerY - height * 0.75 + (canvasHeight * overlayOffsetY);
+      } else {
+        centerX = faceBox.x + faceBox.width / 2;
+        centerY = faceBox.y;
+        x = centerX - width / 2;
+        y = faceBox.y - height * 0.7 + (canvasHeight * overlayOffsetY);
+      }
     } else {
-      width = faceBox.width * totalScale;
-    }
-    
-    height = (imgHeight / imgWidth) * width;
-    
-    // Get forehead top point
-    const forehead = getLandmark(landmarks, 10, canvasWidth, canvasHeight); // Top of head
-    if (forehead) {
-      centerX = faceBox.x + faceBox.width / 2;
-      centerY = forehead.y;
-      x = centerX - width / 2;
-      y = forehead.y - height * 0.7 + (canvasHeight * overlayOffsetY);
-    } else {
+      // Fallback
+      const fallbackScale = calculateDistanceScale();
+      width = faceBox.width * fittingMultiplier * overlayScale * fallbackScale;
+      height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
       centerY = faceBox.y;
       x = centerX - width / 2;
@@ -315,27 +447,48 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
     }
   }
   else if (type === 'shirt') {
-    // Use face width at jaw level
+    // SMART FITTING: Use jaw width as primary scale reference
     const jawLeft = getLandmark(landmarks, 234, canvasWidth, canvasHeight);  // Left jaw
     const jawRight = getLandmark(landmarks, 454, canvasWidth, canvasHeight); // Right jaw
+    const chin = getLandmark(landmarks, 175, canvasWidth, canvasHeight); // Chin point
+    const noseTip = getLandmark(landmarks, 1, canvasWidth, canvasHeight);
     
     if (jawLeft && jawRight) {
+      // Calculate jaw width - primary scaling reference
       const jawWidth = calculateDistance(jawLeft, jawRight);
-      width = jawWidth * totalScale;
+      
+      // Use smart face-width-based scaling
+      const faceScale = calculateFaceWidthScale();
+      
+      // Calculate width based on jaw width with smart fitting
+      width = jawWidth * fittingMultiplier * overlayScale * faceScale;
+      height = (imgHeight / imgWidth) * width;
+      
+      // Precise positioning aligned with chin and body center
+      if (chin) {
+        // Use chin as vertical reference point
+        centerX = (jawLeft.x + jawRight.x) / 2;
+        centerY = chin.y;
+        x = centerX - width / 2;
+        // Position shirt starting from chin level
+        y = chin.y - height * 0.25 + (canvasHeight * overlayOffsetY);
+      } else if (noseTip) {
+        // Fallback: estimate chin position from nose
+        centerX = (jawLeft.x + jawRight.x) / 2;
+        centerY = noseTip.y + faceBox.height * 0.3;
+        x = centerX - width / 2;
+        y = centerY - height * 0.25 + (canvasHeight * overlayOffsetY);
+      } else {
+        centerX = faceBox.x + faceBox.width / 2;
+        centerY = faceBox.y + faceBox.height * 0.6;
+        x = centerX - width / 2;
+        y = faceBox.y + faceBox.height * 0.6 + (canvasHeight * overlayOffsetY);
+      }
     } else {
-      width = faceBox.width * totalScale;
-    }
-    
-    height = (imgHeight / imgWidth) * width;
-    
-    // Position below chin
-    const chin = getLandmark(landmarks, 175, canvasWidth, canvasHeight); // Chin point
-    if (chin) {
-      centerX = faceBox.x + faceBox.width / 2;
-      centerY = chin.y;
-      x = centerX - width / 2;
-      y = chin.y - height * 0.3 + (canvasHeight * overlayOffsetY);
-    } else {
+      // Fallback
+      const fallbackScale = calculateDistanceScale();
+      width = faceBox.width * fittingMultiplier * overlayScale * fallbackScale;
+      height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
       centerY = faceBox.y + faceBox.height * 0.6;
       x = centerX - width / 2;
@@ -599,6 +752,11 @@ function resetToCamera() {
   overlaySrc = '';
   overlayType = '';
   overlayImg = null;
+  
+  // Reset smart fitting references to allow recalibration
+  referenceFaceSize = null;
+  referenceEyeDistance = null;
+  referenceFaceWidth = null;
   
   // Deactivate thumb buttons
   document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
