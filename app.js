@@ -982,23 +982,12 @@ let currentCategory = 'all';
 const products = [
   { id: 1, name: 'Classic Glasses', src: 'assets/glasses.png', type: 'glasses', category: 'glasses', price: 29.99 },
   { id: 2, name: 'Classic Hat', src: 'assets/hat.png', type: 'hat', category: 'hat', price: 24.99 },
-  { id: 3, name: 'Classic Shirt', src: 'assets/shirt.png', type: 'shirt', category: 'shirt', price: 39.99 },
   { id: 4, name: 'Hello Kitty Glasses', src: 'assets/hello_kitty_glasses.png', type: 'glasses', category: 'glasses', price: 34.99 },
   { id: 5, name: 'Oval Black Glasses', src: 'assets/oval_black_glasses.png', type: 'glasses', category: 'glasses', price: 49.99 },
   { id: 6, name: 'Round Black Glasses', src: 'assets/round_black_glasses.png', type: 'glasses', category: 'glasses', price: 44.99 },
   { id: 7, name: 'Square Red Glasses', src: 'assets/square_red_glasses.png', type: 'glasses', category: 'glasses', price: 39.99 },
-  { id: 8, name: 'Eyelash', src: 'assets/eyelash.png', type: 'glasses', category: 'glasses', price: 14.99 },
   { id: 9, name: 'Blue Woolen Hat', src: 'assets/blue_woolen_hat.png', type: 'hat', category: 'hat', price: 29.99 },
-  { id: 10, name: 'Long Braided Hair', src: 'assets/long_braided_hair.png', type: 'hat', category: 'hat', price: 54.99 },
-  { id: 11, name: 'Long Curved Hair', src: 'assets/long_curved_hair.png', type: 'hat', category: 'hat', price: 49.99 },
-  { id: 12, name: 'Black Office Wear', src: 'assets/black_office_wear_women.png', type: 'shirt', category: 'shirt', price: 79.99 },
-  { id: 13, name: 'Green Office Wear', src: 'assets/green_office_wear_winter_women.png', type: 'shirt', category: 'shirt', price: 89.99 },
-  { id: 14, name: 'Navy Suit', src: 'assets/navy_suit_man.png', type: 'shirt', category: 'shirt', price: 129.99 },
-  { id: 15, name: 'Office Wear', src: 'assets/office_wear_women.png', type: 'shirt', category: 'shirt', price: 69.99 },
-  { id: 16, name: 'Pink Bodycon Dress', src: 'assets/pink_bodycon_dress.png', type: 'shirt', category: 'shirt', price: 59.99 },
-  { id: 17, name: 'Pink Suit', src: 'assets/pink_suit_man.png', type: 'shirt', category: 'shirt', price: 119.99 },
-  { id: 18, name: 'Suit with Bow Tie', src: 'assets/suit_with_bow_tie.png', type: 'shirt', category: 'shirt', price: 149.99 },
-  { id: 19, name: 'White Dress', src: 'assets/white_dress.png', type: 'shirt', category: 'shirt', price: 49.99 }
+  { id: 18, name: 'Suit with Bow Tie', src: 'assets/suit_with_bow_tie.png', type: 'shirt', category: 'shirt', price: 149.99 }
 ];
 
 // Apply product to try-on (used by both thumbnail buttons and product library)
