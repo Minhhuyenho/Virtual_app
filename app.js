@@ -603,44 +603,45 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
       width = shoulderWidth * overlayScale * faceScale;
       height = (imgHeight / imgWidth) * width;
       
-      // Calculate neck/shoulder anchor point (well below chin, not covering face)
+      // Calculate neck/shoulder anchor point (at base of neck, well below chin, not covering face)
       let neckY;
       if (chinLower && chinUpper) {
-        // Neck line is well below chin lower point
-        // Estimate neck position: chin lower + full chin height + extra space
+        // Neck base is typically 1.8-2.5x chin height below chin lower point
+        // This ensures the shirt starts at the natural neck base, not covering the chin
         const chinHeight = Math.abs(chinLower.y - chinUpper.y);
-        // Add chin height + additional space to ensure it's below the face
-        neckY = chinLower.y + chinHeight * 1.2; // Neck starts well below chin
+        // Use larger multiplier to position well below chin - at actual neck base
+        neckY = chinLower.y + chinHeight * 2.0; // Neck base is ~2x chin height below chinLower
       } else if (chinUpper) {
-        // Use chin upper and estimate lower, then add space
-        const estimatedChinHeight = faceBox.height * 0.1; // ~10% of face height
-        neckY = chinUpper.y + estimatedChinHeight * 2.0; // Double the space below chin
+        // Use chin upper and estimate lower, then add significant space
+        const estimatedChinHeight = faceBox.height * 0.12; // ~12% of face height
+        // Add space for chin height + neck area
+        neckY = chinUpper.y + estimatedChinHeight * 3.0; // 3x space below chin for neck base
       } else if (noseTip) {
-        // Fallback: estimate neck from nose tip
-        // Neck is typically 35-40% of face height below nose tip
+        // Fallback: estimate neck base from nose tip
+        // Neck base is typically 50-60% of face height below nose tip
         const faceHeight = faceBox.height;
-        neckY = noseTip.y + faceHeight * 0.4; // More space below face
+        neckY = noseTip.y + faceHeight * 0.55; // ~55% of face height below nose = neck base
       } else {
-        // Last resort fallback - position well below face
-        neckY = faceBox.y + faceBox.height * 1.1; // Position below the face box
+        // Last resort fallback - position well below face at neck level
+        neckY = faceBox.y + faceBox.height * 1.3; // Position significantly below the face box
       }
       
       centerX = (jawLeft.x + jawRight.x) / 2;
       centerY = neckY;
       x = centerX - width / 2;
       
-      // Position clothing STARTING from neck line (well below face, not covering it)
-      // The top of the clothing should align with the neck/shoulder line
+      // Position clothing STARTING from neck base line (top edge aligns with neck, not covering chin/face)
+      // The top edge of the shirt should align exactly with the neck/shoulder base line
       y = neckY + (canvasHeight * overlayOffsetY);
       
     } else {
-      // Fallback
+      // Fallback - position well below face at neck level
       const fallbackScale = calculateDistanceScale();
       width = faceBox.width * 2.0 * overlayScale * fallbackScale;
       height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
-      // Position below face
-      centerY = faceBox.y + faceBox.height * 0.9;
+      // Position significantly below face (at neck base level)
+      centerY = faceBox.y + faceBox.height * 1.3;
       x = centerX - width / 2;
       y = centerY + (canvasHeight * overlayOffsetY);
     }
