@@ -1042,19 +1042,19 @@ function renderProducts(category = 'all') {
     : products.filter(p => p.category === category);
   
   productGrid.innerHTML = filteredProducts.map(product => `
-    <div class="bg-gray-700 rounded-lg p-3 hover:bg-gray-600 transition cursor-pointer product-card" data-product-src="${product.src}">
-      <div class="flex gap-3">
-        <img src="${product.src}" alt="${product.name}" class="w-20 h-20 object-contain bg-gray-800 rounded" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27200%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27200%27/%3E%3Ctext fill=%27%23999%27 font-family=%27sans-serif%27 font-size=%2714%27 dy=%2710.5%27 font-weight=%27bold%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27%3ENo Image%3C/text%3E%3C/svg%3E';">
-        <div class="flex-1">
-          <h3 class="font-semibold text-sm mb-1">${product.name}</h3>
-          <p class="text-xs text-gray-400 mb-2">${product.category.charAt(0).toUpperCase() + product.category.slice(1)}</p>
-          <div class="flex items-center justify-between">
-            <span class="text-green-400 font-bold">$${product.price.toFixed(2)}</span>
-            <div class="flex gap-2">
-              <button class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs try-on-btn" data-src="${product.src}" data-type="${product.type}">
+    <div class="bg-gray-700 rounded-lg p-2.5 hover:bg-gray-600 transition cursor-pointer product-card focus-within:ring-2 focus-within:ring-blue-400" data-product-src="${product.src}" tabindex="0">
+      <div class="flex gap-2.5">
+        <img src="${product.src}" alt="${product.name}" class="w-16 h-16 object-contain bg-gray-800 rounded flex-shrink-0" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27200%27 height=%27200%27%3E%3Crect fill=%27%23333%27 width=%27200%27 height=%27200%27/%3E%3Ctext fill=%27%23999%27 font-family=%27sans-serif%27 font-size=%2714%27 dy=%2710.5%27 font-weight=%27bold%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27%3ENo Image%3C/text%3E%3C/svg%3E';">
+        <div class="flex-1 min-w-0">
+          <h3 class="font-semibold text-sm mb-0.5 leading-tight">${product.name}</h3>
+          <p class="text-xs text-gray-400 mb-1.5">${product.category.charAt(0).toUpperCase() + product.category.slice(1)}</p>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-green-400 font-bold text-sm">$${product.price.toFixed(2)}</span>
+            <div class="flex gap-1.5">
+              <button class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded text-xs try-on-btn focus:outline-none focus:ring-2 focus:ring-blue-400" data-src="${product.src}" data-type="${product.type}">
                 Try On
               </button>
-              <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs add-to-cart-btn" data-product-id="${product.id}">
+              <button class="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded text-xs add-to-cart-btn focus:outline-none focus:ring-2 focus:ring-green-400" data-product-id="${product.id}">
                 + Cart
               </button>
             </div>

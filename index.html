@@ -7,67 +7,173 @@
 <link rel="stylesheet" href="style.css" />
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  @media (max-width: 768px) {
+  /* Layout Improvements */
+  body {
+    overflow: hidden;
+  }
+  
+  .app-layout {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  
+  .main-content {
+    padding-right: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  
+  @media (min-width: 1024px) {
+    .main-content {
+      padding-right: 320px; /* Account for fixed library width (lg:w-80 = 20rem = 320px) */
+    }
+  }
+  
+  /* Product Library - Docked to right edge with fixed width */
+  .product-library {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  
+  @media (min-width: 1024px) {
+    .product-library {
+      width: 320px; /* Fixed width - no variable sizing */
+      box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
+    }
+  }
+  
+  @media (max-width: 1023px) {
     .product-library {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
+      max-height: 80vh;
       transform: translateY(100%);
       transition: transform 0.3s ease;
       z-index: 50;
+      border-radius: 1rem 1rem 0 0;
+      width: 100%;
     }
     .product-library.open {
       transform: translateY(0);
     }
   }
+  
+  /* Try-on container improvements - Increased size (10-20% larger) */
+  .try-on-container {
+    width: 100%;
+    max-width: 450px; /* Increased from ~360px */
+  }
+  
+  @media (min-width: 1280px) {
+    .try-on-container {
+      max-width: 520px; /* ~15% larger on larger screens */
+    }
+  }
+  
+  @media (min-width: 1536px) {
+    .try-on-container {
+      max-width: 600px; /* ~20% larger on ultra-wide screens */
+    }
+  }
+  
+  /* Top bar - match try-on container width */
+  .top-bar-container {
+    max-width: 450px;
+  }
+  
+  @media (min-width: 1280px) {
+    .top-bar-container {
+      max-width: 520px;
+    }
+  }
+  
+  @media (min-width: 1536px) {
+    .top-bar-container {
+      max-width: 600px;
+    }
+  }
+  
+  /* Compact controls - match try-on container width */
+  .controls-container {
+    max-width: 450px;
+  }
+  
+  @media (min-width: 1280px) {
+    .controls-container {
+      max-width: 520px;
+    }
+  }
+  
+  @media (min-width: 1536px) {
+    .controls-container {
+      max-width: 600px;
+    }
+  }
+  
+  /* Ensure buttons are keyboard accessible */
+  button:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+  
+  /* Product card hover and focus states */
+  .product-card:focus {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+  }
 </style>
 </head>
-<body class="bg-gray-900 text-white">
-  <div class="flex flex-col lg:flex-row min-h-screen">
+<body class="bg-gray-900 text-white overflow-hidden">
+  <div class="app-layout flex flex-col lg:flex-row h-screen w-full">
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col items-center gap-3 p-3 lg:max-w-2xl">
+    <div class="main-content flex-1 flex flex-col items-center justify-center min-w-0 p-4 lg:p-6">
       <!-- Top Bar with Cart -->
-      <div class="w-full max-w-lg flex justify-between items-center mb-2">
+      <div class="top-bar-container w-full flex justify-between items-center mb-4">
         <h1 class="text-xl font-bold">VirtualStyle</h1>
         <div class="flex items-center gap-2">
-          <button id="closetBtn" class="relative bg-purple-600 hover:bg-purple-700 text-white p-2 rounded-lg transition" title="My Closet">
+          <button id="closetBtn" class="relative bg-purple-600 hover:bg-purple-700 text-white p-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-purple-400" title="My Closet">
             👔
             <span id="closetBadge" class="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
           </button>
-          <button id="cartBtn" class="relative bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition">
+          <button id="cartBtn" class="relative bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-400">
             🛒
             <span id="cartBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">0</span>
           </button>
-          <button id="captureBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm">📷 Take Photo</button>
+          <button id="captureBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">📷 Take Photo</button>
         </div>
       </div>
 
-      <!-- Camera/Canvas Area -->
-      <div class="relative w-full max-w-lg aspect-[9/16] bg-gray-800 rounded-xl overflow-hidden">
+      <!-- Camera/Canvas Area - Increased size and centered -->
+      <div class="try-on-container relative w-full aspect-[9/16] bg-gray-800 rounded-xl overflow-hidden shadow-2xl">
         <video id="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover"></video>
         <canvas id="canvas" class="absolute inset-0 w-full h-full"></canvas>
         <img id="uploadedImg" style="display: none;" class="absolute inset-0 w-full h-full object-cover" />
         <div class="status absolute top-2 left-2 bg-black/70 px-2 py-1 rounded text-xs z-10" id="status">Initializing face detection...</div>
       </div>
 
-      <!-- Controls -->
-      <div class="w-full max-w-lg">
+      <!-- Controls - Compact grouping -->
+      <div class="controls-container w-full mt-4">
         <div class="flex flex-col gap-2 mb-3">
-          <button id="saveOutfitBtn" class="bg-pink-600 hover:bg-pink-700 text-white py-2 px-4 rounded-lg w-full flex items-center justify-center gap-2">
+          <button id="saveOutfitBtn" class="bg-pink-600 hover:bg-pink-700 text-white py-2 px-4 rounded-lg w-full flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-pink-400">
             <span>💾</span>
             <span>Save Outfit to Closet</span>
           </button>
-          <button id="saveBtn" class="bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg w-full">💾 Save Image</button>
-          <button id="backToCameraBtn" class="bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg w-full" style="display: none;">📷 Back to Camera</button>
+          <div class="flex gap-2">
+            <button id="saveBtn" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400">💾 Save Image</button>
+            <button id="backToCameraBtn" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400" style="display: none;">📷 Back to Camera</button>
+          </div>
         </div>
         
         <!-- Quick Select Thumbnails (Legacy - can hide on larger screens) -->
         <div class="thumbnails hidden md:flex gap-2 flex-wrap justify-center mb-3">
-          <button class="thumb bg-white text-black px-3 py-1 rounded-lg text-sm hover:bg-gray-200" data-src="" data-type="">Remove</button>
+          <button class="thumb bg-white text-black px-3 py-1 rounded-lg text-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400" data-src="" data-type="">Remove</button>
         </div>
         
-        <div class="bg-gray-800 p-4 rounded-lg">
+        <div class="bg-gray-800 p-3 rounded-lg">
           <label class="block text-sm mb-2">Size Scale
             <input id="scale" type="range" min="0.5" max="2.5" step="0.05" value="1.0" class="w-full mt-1">
           </label>
@@ -79,29 +185,27 @@
       </div>
     </div>
 
-    <!-- Product Library Panel -->
-    <div class="product-library lg:w-80 xl:w-96 bg-gray-800 lg:h-screen lg:overflow-y-auto border-l border-gray-700">
-      <div class="sticky top-0 bg-gray-800 border-b border-gray-700 p-4 z-10">
+    <!-- Product Library Panel - Docked to right edge -->
+    <div class="product-library bg-gray-800 lg:h-screen lg:fixed lg:right-0 lg:top-0 lg:shadow-2xl lg:rounded-tl-xl lg:rounded-bl-xl border-l border-gray-700">
+      <div class="sticky top-0 bg-gray-800 border-b border-gray-700 p-3 z-10">
         <div class="flex justify-between items-center mb-2">
           <h2 class="text-lg font-semibold">Product Library</h2>
-          <button id="closeLibraryBtn" class="lg:hidden text-gray-400 hover:text-white">✕</button>
+          <button id="closeLibraryBtn" class="lg:hidden text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label="Close library">✕</button>
         </div>
-        <div class="flex gap-2">
-          <button class="filter-btn active px-3 py-1 rounded bg-blue-600 text-sm" data-category="all">All</button>
-          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="glasses">Glasses</button>
-          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="hat">Hats</button>
-          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm" data-category="shirt">Clothing</button>
+        <div class="flex gap-2 flex-wrap">
+          <button class="filter-btn active px-3 py-1 rounded bg-blue-600 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" data-category="all">All</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" data-category="glasses">Glasses</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" data-category="hat">Hats</button>
+          <button class="filter-btn px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" data-category="shirt">Clothing</button>
         </div>
       </div>
       
-      <div id="productGrid" class="p-4 grid grid-cols-1 gap-4">
+      <div id="productGrid" class="p-3 grid grid-cols-1 gap-2.5">
         <!-- Products will be inserted here -->
       </div>
       
       <!-- Mobile Toggle Button -->
-      <button id="toggleLibraryBtn" class="lg:hidden fixed bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg z-40">
-        📦
-      </button>
+      <button id="toggleLibraryBtn" class="lg:hidden fixed bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg z-40 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label="Toggle product library">📦</button>
     </div>
   </div>
 
