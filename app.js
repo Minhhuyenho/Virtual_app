@@ -386,7 +386,7 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
   
   // Smart fitting multipliers - calibrated for realistic proportions
   const smartFittingMultipliers = {
-    glasses: 1.65,  // Eye distance multiplier for glasses (reduced from 2.2 for better fit)
+    glasses: 2.2,  // Eye distance multiplier for glasses
     hat: 1.6,       // Face width multiplier for hats
     shirt: 2.4      // Face width multiplier for shirts
   };
@@ -425,46 +425,35 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
       const eyeScale = calculateEyeDistanceScale();
       
       if (actualType === 'eyelash') {
-        // EYELASH: Scale to match eye width, align along upper lash line
-        // Eyelashes should be ~95-100% of eye width for natural look
-        width = eyeDistance * 1.0 * overlayScale * eyeScale;
+        // EYELASH: Smaller scale, align above upper eyelid
+        // Scale relative to eye width (eyelashes are ~80-90% of eye width)
+        width = eyeDistance * 0.85 * overlayScale * eyeScale;
         height = (imgHeight / imgWidth) * width;
         
         // Calculate eye center horizontally
         centerX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
         
-        // For eyelashes: align exactly along the upper lash line
-        // Use eye corners to calculate upper eyelid position more accurately
-        let upperLashLineY;
-        if (leftEyeInner && rightEyeInner && leftEyeOuter && rightEyeOuter) {
-          // Calculate average eye opening height
-          const leftEyeOpening = Math.abs(leftEyeOuter.y - leftEyeInner.y) * 0.5;
-          const rightEyeOpening = Math.abs(rightEyeOuter.y - rightEyeInner.y) * 0.5;
-          const avgEyeOpening = (leftEyeOpening + rightEyeOpening) / 2;
-          
-          // Upper lash line is at the top of the eye opening (upper eyelid edge)
-          const leftEyeTop = Math.min(leftEyeOuter.y, leftEyeInner.y);
-          const rightEyeTop = Math.min(rightEyeOuter.y, rightEyeInner.y);
-          upperLashLineY = (leftEyeTop + rightEyeTop) / 2;
-        } else if (leftEyebrow && rightEyebrow && leftEyeOuter && rightEyeOuter) {
-          // Use eyebrow position to estimate upper eyelid
-          // Upper eyelid is typically 40-50% of the distance from eyebrow to eye
-          const leftEyelidDist = leftEyeOuter.y - leftEyebrow.y;
-          const rightEyelidDist = rightEyeOuter.y - rightEyebrow.y;
-          const leftLashLine = leftEyeOuter.y - leftEyelidDist * 0.45;
-          const rightLashLine = rightEyeOuter.y - rightEyelidDist * 0.45;
-          upperLashLineY = (leftLashLine + rightLashLine) / 2;
+        // For eyelashes: align above upper eyelid
+        // Use eyebrow or estimate upper eyelid position
+        let upperEyelidY;
+        if (leftEyebrow && rightEyebrow) {
+          // Use eyebrow center as reference for upper eyelid
+          const leftEyelid = leftEyebrow.y + (leftEyeOuter.y - leftEyebrow.y) * 0.3;
+          const rightEyelid = rightEyebrow.y + (rightEyeOuter.y - rightEyebrow.y) * 0.3;
+          upperEyelidY = (leftEyelid + rightEyelid) / 2;
+        } else if (leftEyeInner && rightEyeInner) {
+          // Estimate upper eyelid from eye corners
+          const eyeLevel = ((leftEyeOuter.y + leftEyeInner.y) / 2 + (rightEyeOuter.y + rightEyeInner.y) / 2) / 2;
+          // Upper eyelid is approximately 20-30% above eye level
+          upperEyelidY = eyeLevel - eyeDistance * 0.15;
         } else {
-          // Fallback: estimate from eye outer corners
-          const eyeLevel = (leftEyeOuter.y + rightEyeOuter.y) / 2;
-          upperLashLineY = eyeLevel - eyeDistance * 0.12;
+          upperEyelidY = (leftEyeOuter.y + rightEyeOuter.y) / 2 - eyeDistance * 0.2;
         }
         
-        centerY = upperLashLineY;
+        centerY = upperEyelidY;
         x = centerX - width / 2;
-        // Position eyelash exactly along the upper lash line
-        // The bottom edge of the eyelash should align with the lash line
-        y = upperLashLineY - height * 0.7 + (canvasHeight * overlayOffsetY);
+        // Position eyelash just above upper eyelid (top edge aligned)
+        y = upperEyelidY - height * 0.9 + (canvasHeight * overlayOffsetY);
       } else {
         // GLASSES: Standard fitting
         width = eyeDistance * fittingMultiplier * overlayScale * eyeScale;
@@ -492,14 +481,14 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
       // Fallback to face box if eyes not detected
       const fallbackScale = calculateDistanceScale();
       const baseWidth = actualType === 'eyelash' 
-        ? faceBox.width * 0.5  // Slightly larger for eyelashes
-        : faceBox.width * 0.5; // Reduced for glasses
-      width = baseWidth * (actualType === 'eyelash' ? 1.0 : fittingMultiplier) * overlayScale * fallbackScale;
+        ? faceBox.width * 0.4 
+        : faceBox.width * 0.6;
+      width = baseWidth * (actualType === 'eyelash' ? 0.9 : fittingMultiplier) * overlayScale * fallbackScale;
       height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
-      centerY = faceBox.y + faceBox.height * (actualType === 'eyelash' ? 0.25 : 0.3);
+      centerY = faceBox.y + faceBox.height * (actualType === 'eyelash' ? 0.2 : 0.25);
       x = centerX - width / 2;
-      y = centerY - height * (actualType === 'eyelash' ? 0.7 : 0.5) + (canvasHeight * overlayOffsetY);
+      y = centerY - height * (actualType === 'eyelash' ? 0.9 : 0.5) + (canvasHeight * overlayOffsetY);
     }
   } 
   else if (type === 'hat') {
@@ -528,56 +517,52 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
       const faceScale = calculateFaceWidthScale();
       
       // Scale hair/hat to cover head properly (wider than face, covers head height)
-      // Hair should be ~1.6-1.8x face width to properly cover the head
-      const hairWidthMultiplier = 1.7;
+      // Hair should be ~1.3-1.5x face width to look natural
+      const hairWidthMultiplier = 1.4;
       width = faceWidth * hairWidthMultiplier * overlayScale * faceScale;
-      
-      // Scale height based on head height to ensure full coverage
-      // Hair height should match or exceed head height
-      const hairHeightMultiplier = Math.max(1.0, headHeight / (width * (imgHeight / imgWidth)));
-      height = (imgHeight / imgWidth) * width * hairHeightMultiplier;
+      height = (imgHeight / imgWidth) * width;
       
       // Anchor from crown (forehead top) - hair starts here
       centerX = (faceLeft.x + faceRight.x) / 2;
       centerY = forehead.y;
       
       x = centerX - width / 2;
-      // Position hair/hat starting exactly from forehead top (crown)
-      // The top edge of the hair should align with the forehead landmark
-      y = forehead.y + (canvasHeight * overlayOffsetY);
+      // Position hair/hat starting from crown, extending down
+      // Adjust so the top of the hair aligns with forehead top
+      y = forehead.y - height * 0.1 + (canvasHeight * overlayOffsetY);
       
     } else if (faceLeft && faceRight) {
       // Fallback: estimate forehead position
       const faceWidth = calculateDistance(faceLeft, faceRight);
       const faceScale = calculateFaceWidthScale();
       
-      width = faceWidth * 1.7 * overlayScale * faceScale;
+      width = faceWidth * 1.4 * overlayScale * faceScale;
       height = (imgHeight / imgWidth) * width;
       
       if (leftEye && rightEye) {
         // Estimate crown from eye level
         const eyeLevel = (leftEye.y + rightEye.y) / 2;
-        const estimatedCrown = eyeLevel - faceBox.height * 0.35;
+        const estimatedCrown = eyeLevel - faceBox.height * 0.3;
         
         centerX = (faceLeft.x + faceRight.x) / 2;
         centerY = estimatedCrown;
         x = centerX - width / 2;
-        y = estimatedCrown + (canvasHeight * overlayOffsetY);
+        y = estimatedCrown - height * 0.1 + (canvasHeight * overlayOffsetY);
       } else {
         centerX = faceBox.x + faceBox.width / 2;
         centerY = faceBox.y;
         x = centerX - width / 2;
-        y = faceBox.y + (canvasHeight * overlayOffsetY);
+        y = faceBox.y - height * 0.1 + (canvasHeight * overlayOffsetY);
       }
     } else {
       // Fallback
       const fallbackScale = calculateDistanceScale();
-      width = faceBox.width * 1.7 * overlayScale * fallbackScale;
+      width = faceBox.width * 1.4 * overlayScale * fallbackScale;
       height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
       centerY = faceBox.y;
       x = centerX - width / 2;
-      y = faceBox.y + (canvasHeight * overlayOffsetY);
+      y = faceBox.y - height * 0.1 + (canvasHeight * overlayOffsetY);
     }
   }
   else if (type === 'shirt') {
@@ -603,45 +588,43 @@ function calculateOverlayPosition(type, landmarks, imgWidth, imgHeight) {
       width = shoulderWidth * overlayScale * faceScale;
       height = (imgHeight / imgWidth) * width;
       
-      // Calculate neck/shoulder anchor point (at base of neck, well below chin, not covering face)
+      // Calculate neck/shoulder anchor point (below chin, not at chin)
       let neckY;
       if (chinLower && chinUpper) {
-        // Neck base is typically 1.8-2.5x chin height below chin lower point
-        // This ensures the shirt starts at the natural neck base, not covering the chin
+        // Neck line is below chin lower point
+        // Estimate neck position: chin lower + some distance (neck length)
         const chinHeight = Math.abs(chinLower.y - chinUpper.y);
-        // Use larger multiplier to position well below chin - at actual neck base
-        neckY = chinLower.y + chinHeight * 2.0; // Neck base is ~2x chin height below chinLower
+        neckY = chinLower.y + chinHeight * 0.5; // Neck starts ~half chin height below chin
       } else if (chinUpper) {
-        // Use chin upper and estimate lower, then add significant space
-        const estimatedChinHeight = faceBox.height * 0.12; // ~12% of face height
-        // Add space for chin height + neck area
-        neckY = chinUpper.y + estimatedChinHeight * 3.0; // 3x space below chin for neck base
+        // Use chin upper and estimate lower
+        const estimatedChinHeight = faceBox.height * 0.08; // ~8% of face height
+        neckY = chinUpper.y + estimatedChinHeight;
       } else if (noseTip) {
-        // Fallback: estimate neck base from nose tip
-        // Neck base is typically 50-60% of face height below nose tip
+        // Fallback: estimate neck from nose tip
+        // Neck is typically 20-25% of face height below nose tip
         const faceHeight = faceBox.height;
-        neckY = noseTip.y + faceHeight * 0.55; // ~55% of face height below nose = neck base
+        neckY = noseTip.y + faceHeight * 0.25;
       } else {
-        // Last resort fallback - position well below face at neck level
-        neckY = faceBox.y + faceBox.height * 1.3; // Position significantly below the face box
+        // Last resort fallback
+        neckY = faceBox.y + faceBox.height * 0.85;
       }
       
       centerX = (jawLeft.x + jawRight.x) / 2;
       centerY = neckY;
       x = centerX - width / 2;
       
-      // Position clothing STARTING from neck base line (top edge aligns with neck, not covering chin/face)
-      // The top edge of the shirt should align exactly with the neck/shoulder base line
+      // Position clothing STARTING from neck line (not covering face)
+      // The top of the clothing should align with neck, not overlap chin
       y = neckY + (canvasHeight * overlayOffsetY);
       
     } else {
-      // Fallback - position well below face at neck level
+      // Fallback
       const fallbackScale = calculateDistanceScale();
       width = faceBox.width * 2.0 * overlayScale * fallbackScale;
       height = (imgHeight / imgWidth) * width;
       centerX = faceBox.x + faceBox.width / 2;
-      // Position significantly below face (at neck base level)
-      centerY = faceBox.y + faceBox.height * 1.3;
+      // Position below face
+      centerY = faceBox.y + faceBox.height * 0.9;
       x = centerX - width / 2;
       y = centerY + (canvasHeight * overlayOffsetY);
     }
