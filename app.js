@@ -1,11 +1,5 @@
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const status = document.getElementById('status');
-const captureBtn = document.getElementById('captureBtn');
-const saveBtn = document.getElementById('saveBtn');
-const backToCameraBtn = document.getElementById('backToCameraBtn');
-const uploadedImg = document.getElementById('uploadedImg');
+// DOM element references (will be initialized when DOM is ready)
+let video, canvas, ctx, status, captureBtn, saveBtn, backToCameraBtn, uploadedImg;
 
 let overlayImg = null;
 let overlaySrc = '';
@@ -64,8 +58,13 @@ function initLightingAnalysis() {
 // Initialize MediaPipe Face Mesh
 function initFaceMesh() {
   if (typeof FaceMesh === 'undefined') {
-    status.textContent = 'Loading face detection models...';
+    if (status) status.textContent = 'Loading face detection models...';
     setTimeout(initFaceMesh, 100);
+    return;
+  }
+  
+  if (!video || !canvas || !status) {
+    console.error('DOM elements not ready for face mesh initialization');
     return;
   }
   
@@ -149,6 +148,11 @@ function onResults(results) {
 
 // Start camera
 async function startCamera() {
+  if (!video || !canvas || !ctx) {
+    console.error('Camera cannot start: DOM elements not available');
+    return;
+  }
+  
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ 
       video: { facingMode: 'user' }, 
@@ -159,8 +163,8 @@ async function startCamera() {
     
     // Get container dimensions for responsive sizing
     const container = video.parentElement;
-    const containerWidth = container.clientWidth || 360;
-    const containerHeight = container.clientHeight || Math.round(containerWidth * 16/9);
+    const containerWidth = container ? container.clientWidth || 360 : 360;
+    const containerHeight = container ? (container.clientHeight || Math.round(containerWidth * 16/9)) : Math.round(containerWidth * 16/9);
     
     canvas.width = containerWidth;
     canvas.height = containerHeight;
@@ -862,7 +866,13 @@ function draw() {
 }
 
 // Capture photo from webcam
-captureBtn.addEventListener('click', async () => {
+function setupEventListeners() {
+  if (!captureBtn || !saveBtn || !backToCameraBtn) {
+    console.error('Buttons not found for event listeners');
+    return;
+  }
+  
+  captureBtn.addEventListener('click', async () => {
   try {
     // Capture current frame from video (before overlay is drawn)
     const tempCanvas = document.createElement('canvas');
@@ -917,11 +927,10 @@ captureBtn.addEventListener('click', async () => {
     status.textContent = 'Capture failed: ' + err.message;
     status.className = 'status error';
   }
-});
+  });
 
-
-// Save image
-saveBtn.addEventListener('click', async () => {
+  // Save image
+  saveBtn.addEventListener('click', async () => {
   // If in camera mode, we need to capture first
   if (!isUsingUploadedImage) {
     status.textContent = 'Capturing photo...';
@@ -930,8 +939,14 @@ saveBtn.addEventListener('click', async () => {
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
   
-  downloadImage();
-});
+    downloadImage();
+  });
+
+  // Back to camera button
+  backToCameraBtn.addEventListener('click', () => {
+    resetToCamera();
+  });
+}
 
 function downloadImage() {
   try {
@@ -1156,91 +1171,111 @@ function updateCartUI() {
   }
 }
 
-// Category filter
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => {
-      b.classList.remove('active', 'bg-blue-600');
-      b.classList.add('bg-gray-700');
+// Setup shopping cart and product library event listeners
+function setupShoppingCartAndLibrary() {
+  // Category filter
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('active', 'bg-blue-600');
+        b.classList.add('bg-gray-700');
+      });
+      btn.classList.add('active', 'bg-blue-600');
+      btn.classList.remove('bg-gray-700');
+      currentCategory = btn.dataset.category;
+      renderProducts(currentCategory);
     });
-    btn.classList.add('active', 'bg-blue-600');
-    btn.classList.remove('bg-gray-700');
-    currentCategory = btn.dataset.category;
-    renderProducts(currentCategory);
   });
-});
 
-// Cart modal
-const cartBtn = document.getElementById('cartBtn');
-const cartModal = document.getElementById('cartModal');
-const closeCartBtn = document.getElementById('closeCartBtn');
+  // Cart modal
+  const cartBtn = document.getElementById('cartBtn');
+  const cartModal = document.getElementById('cartModal');
+  const closeCartBtn = document.getElementById('closeCartBtn');
 
-cartBtn.addEventListener('click', () => {
-  cartModal.classList.remove('hidden');
-});
-
-closeCartBtn.addEventListener('click', () => {
-  cartModal.classList.add('hidden');
-});
-
-cartModal.addEventListener('click', (e) => {
-  if (e.target === cartModal) {
-    cartModal.classList.add('hidden');
+  if (cartBtn && cartModal) {
+    cartBtn.addEventListener('click', () => {
+      cartModal.classList.remove('hidden');
+    });
   }
-});
 
-// Checkout
-document.getElementById('checkoutBtn').addEventListener('click', () => {
-  if (shoppingCart.length > 0) {
-    alert(`Checkout complete! ${shoppingCart.length} item(s) for $${shoppingCart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}`);
-    // In a real app, you would redirect to checkout or send data to backend
+  if (closeCartBtn && cartModal) {
+    closeCartBtn.addEventListener('click', () => {
+      cartModal.classList.add('hidden');
+    });
   }
-});
 
-// Mobile library toggle
-const toggleLibraryBtn = document.getElementById('toggleLibraryBtn');
-const closeLibraryBtn = document.getElementById('closeLibraryBtn');
-const productLibrary = document.querySelector('.product-library');
+  if (cartModal) {
+    cartModal.addEventListener('click', (e) => {
+      if (e.target === cartModal) {
+        cartModal.classList.add('hidden');
+      }
+    });
+  }
 
-if (toggleLibraryBtn) {
-  toggleLibraryBtn.addEventListener('click', () => {
-    productLibrary.classList.add('open');
-  });
+  // Checkout
+  const checkoutBtn = document.getElementById('checkoutBtn');
+  if (checkoutBtn) {
+    checkoutBtn.addEventListener('click', () => {
+      if (shoppingCart.length > 0) {
+        alert(`Checkout complete! ${shoppingCart.length} item(s) for $${shoppingCart.reduce((sum, item) => sum + item.price, 0).toFixed(2)}`);
+        // In a real app, you would redirect to checkout or send data to backend
+      }
+    });
+  }
+
+  // Mobile library toggle
+  const toggleLibraryBtn = document.getElementById('toggleLibraryBtn');
+  const closeLibraryBtn = document.getElementById('closeLibraryBtn');
+  const productLibrary = document.querySelector('.product-library');
+
+  if (toggleLibraryBtn && productLibrary) {
+    toggleLibraryBtn.addEventListener('click', () => {
+      productLibrary.classList.add('open');
+    });
+  }
+
+  if (closeLibraryBtn && productLibrary) {
+    closeLibraryBtn.addEventListener('click', () => {
+      productLibrary.classList.remove('open');
+    });
+  }
 }
 
-if (closeLibraryBtn) {
-  closeLibraryBtn.addEventListener('click', () => {
-    productLibrary.classList.remove('open');
-  });
+// Thumbnail buttons are now set up in setupThumbnailButtons() function
+
+// Setup slider event listeners
+function setupSliders() {
+  const scaleSlider = document.getElementById('scale');
+  const offsetSlider = document.getElementById('offY');
+  
+  if (scaleSlider) {
+    scaleSlider.addEventListener('input', (e) => {
+      overlayScale = parseFloat(e.target.value);
+      draw();
+    });
+  }
+  
+  if (offsetSlider) {
+    offsetSlider.addEventListener('input', (e) => {
+      overlayOffsetY = parseFloat(e.target.value);
+      draw();
+    });
+  }
 }
 
-// Thumbnail buttons (legacy support)
-document.querySelectorAll('.thumb').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    
-    const src = btn.dataset.src;
-    const type = btn.dataset.type;
-    applyProduct(src, type);
+// Setup thumbnail buttons (legacy support)
+function setupThumbnailButtons() {
+  document.querySelectorAll('.thumb').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.thumb').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      const src = btn.dataset.src;
+      const type = btn.dataset.type;
+      applyProduct(src, type);
+    });
   });
-});
-
-// Sliders
-document.getElementById('scale').addEventListener('input', (e) => {
-  overlayScale = parseFloat(e.target.value);
-  draw();
-});
-
-document.getElementById('offY').addEventListener('input', (e) => {
-  overlayOffsetY = parseFloat(e.target.value);
-  draw();
-});
-
-// Back to camera button
-backToCameraBtn.addEventListener('click', () => {
-  resetToCamera();
-});
+}
 
 // Function to reset to camera mode
 function resetToCamera() {
@@ -1629,13 +1664,42 @@ function initVirtualCloset() {
   }
 }
 
-// Initialize everything
-initFaceMesh();
-renderProducts(); // Initialize product library
+// Initialize DOM elements and start the app
+function initializeApp() {
+  // Get DOM element references
+  video = document.getElementById('video');
+  canvas = document.getElementById('canvas');
+  if (canvas) {
+    ctx = canvas.getContext('2d');
+  }
+  status = document.getElementById('status');
+  captureBtn = document.getElementById('captureBtn');
+  saveBtn = document.getElementById('saveBtn');
+  backToCameraBtn = document.getElementById('backToCameraBtn');
+  uploadedImg = document.getElementById('uploadedImg');
+  
+  // Verify essential elements exist
+  if (!video || !canvas || !ctx || !status) {
+    console.error('Critical DOM elements not found. Please check HTML structure.');
+    return;
+  }
+  
+  // Setup all event listeners
+  setupEventListeners();
+  setupSliders();
+  setupThumbnailButtons();
+  setupShoppingCartAndLibrary();
+  
+  // Initialize all features
+  initFaceMesh();
+  renderProducts(); // Initialize product library
+  initVirtualCloset(); // Initialize Virtual Closet
+}
 
-// Initialize Virtual Closet when DOM is ready
+// Start app when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initVirtualCloset);
+  document.addEventListener('DOMContentLoaded', initializeApp);
 } else {
-  initVirtualCloset();
+  // DOM is already loaded
+  initializeApp();
 }
