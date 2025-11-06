@@ -16,174 +16,6 @@ let referenceFaceSize = null; // Reference face size for distance calculation
 let referenceEyeDistance = null; // Reference eye distance for scaling glasses
 let referenceFaceWidth = null; // Reference face width for scaling hats/shirts
 
-// Responsive state and helpers
-let resizeObserver = null;
-let dpr = (window.devicePixelRatio || 1);
-let lastContainerRect = { width: 0, height: 0 };
-let resizeRaf = 0;
-let activeFocusTrap = { root: null, previouslyFocused: null, handler: null };
-
-// Inject viewport meta and responsive styles for safe areas and dynamic viewport units
-function injectViewportAndStyles() {
-  try {
-    // Ensure viewport meta exists and is correct
-    const head = document.head || document.getElementsByTagName('head')[0];
-    let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) {
-      meta = document.createElement('meta');
-      meta.setAttribute('name', 'viewport');
-      head.appendChild(meta);
-    }
-    meta.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover');
-
-    // Inject minimal CSS for dynamic viewport and safe areas
-    const style = document.createElement('style');
-    style.setAttribute('data-virtual-style-responsive', '');
-    style.textContent = `
-      :root { --tryon-dvh: 100dvh; }
-      @supports not (height: 100dvh) { :root { --tryon-dvh: 100vh; } }
-      body { min-height: var(--tryon-dvh); }
-      /* Top bar and bottom sheet safe-area padding */
-      .safe-top { padding-top: max(env(safe-area-inset-top), 0px); }
-      .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
-      /* Ensure interactive targets are at least 44x44 */
-      button, .product-card, .try-on-btn, .add-to-cart-btn { min-width: 44px; min-height: 44px; }
-      /* Video cover and containment */
-      #video { object-fit: cover; width: 100%; height: 100%; }
-      /* Bottom sheet behavior for product library */
-      .product-library { position: fixed; left: 0; right: 0; bottom: 0; max-height: calc(var(--tryon-dvh) - 64px); transform: translateY(70%); transition: transform .25s ease; }
-      .product-library.open { transform: translateY(0%); }
-    `;
-    head.appendChild(style);
-  } catch (e) {
-    console.warn('Failed to inject viewport/styles', e);
-  }
-}
-
-// Debounce helper using requestAnimationFrame for resize operations
-function debounceResize(callback) {
-  if (resizeRaf) cancelAnimationFrame(resizeRaf);
-  resizeRaf = requestAnimationFrame(() => {
-    resizeRaf = 0;
-    callback();
-  });
-}
-
-// Simple focus trap for modals
-function getFocusableElements(root) {
-  if (!root) return [];
-  return Array.from(root.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'))
-    .filter(el => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
-}
-
-function trapFocus(root) {
-  releaseFocusTrap();
-  const focusables = getFocusableElements(root);
-  activeFocusTrap.root = root;
-  activeFocusTrap.previouslyFocused = document.activeElement;
-  if (focusables.length) focusables[0].focus();
-  activeFocusTrap.handler = (e) => {
-    if (e.key !== 'Tab') return;
-    const items = getFocusableElements(root);
-    if (!items.length) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  };
-  document.addEventListener('keydown', activeFocusTrap.handler);
-}
-
-function releaseFocusTrap() {
-  if (activeFocusTrap.handler) {
-    document.removeEventListener('keydown', activeFocusTrap.handler);
-  }
-  if (activeFocusTrap.previouslyFocused && typeof activeFocusTrap.previouslyFocused.focus === 'function') {
-    try { activeFocusTrap.previouslyFocused.focus(); } catch (_) {}
-  }
-  activeFocusTrap = { root: null, previouslyFocused: null, handler: null };
-}
-
-// Resize canvas to match CSS size of its container with DPR-aware buffer sizing
-function resizeCanvasToContainer() {
-  if (!canvas || !ctx || !video) return;
-  const container = video.parentElement || canvas.parentElement || document.body;
-  const containerWidth = container.clientWidth || 360;
-  const containerHeight = container.clientHeight || Math.round(containerWidth * 16/9);
-  // Cache rect to detect no-op
-  if (lastContainerRect.width === containerWidth && lastContainerRect.height === containerHeight && dpr === (window.devicePixelRatio || 1)) {
-    return;
-  }
-  lastContainerRect = { width: containerWidth, height: containerHeight };
-
-  // CSS display size
-  canvas.style.width = containerWidth + 'px';
-  canvas.style.height = containerHeight + 'px';
-
-  // DPR-aware drawing buffer
-  dpr = (window.devicePixelRatio || 1);
-  canvas.width = Math.floor(containerWidth * dpr);
-  canvas.height = Math.floor(containerHeight * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // keep drawing coordinates in CSS pixels
-}
-
-// Ensure video element has correct attributes for mobile browsers
-function ensureVideoAttributes() {
-  if (!video) return;
-  video.setAttribute('autoplay', '');
-  video.setAttribute('playsinline', '');
-  video.setAttribute('muted', '');
-  video.muted = true;
-  video.playsInline = true;
-  // In case browsers require a play() attempt
-  const tryPlay = () => { try { video.play().catch(() => {}); } catch (_) {} };
-  setTimeout(tryPlay, 0);
-}
-
-// Orientation / resize handling for iOS Safari quirks
-function setupResponsiveHandlers() {
-  // Initial size
-  resizeCanvasToContainer();
-
-  // ResizeObserver for container changes
-  const container = (video && video.parentElement) || document.body;
-  if (window.ResizeObserver && container) {
-    resizeObserver = new ResizeObserver(() => debounceResize(() => {
-      resizeCanvasToContainer();
-      // Restart camera sizing if needed
-      if (!isUsingUploadedImage && currentStream) {
-        restartCameraIfAspectChanged();
-      }
-    }));
-    resizeObserver.observe(container);
-  }
-
-  // Window resize and orientation change
-  window.addEventListener('resize', () => debounceResize(() => {
-    resizeCanvasToContainer();
-    if (!isUsingUploadedImage && currentStream) restartCameraIfAspectChanged();
-  }));
-  window.addEventListener('orientationchange', () => debounceResize(() => {
-    resizeCanvasToContainer();
-    if (!isUsingUploadedImage && currentStream) restartCameraIfAspectChanged();
-  }));
-}
-
-// Restart camera if the displayed aspect changed to keep video/canvas aligned on iOS
-function restartCameraIfAspectChanged() {
-  if (!video) return;
-  const cw = lastContainerRect.width || (video.parentElement ? video.parentElement.clientWidth : video.clientWidth);
-  const ch = lastContainerRect.height || (video.parentElement ? video.parentElement.clientHeight : video.clientHeight);
-  // Heuristic: if difference from video aspect is large, restart
-  const videoW = video.videoWidth || cw;
-  const videoH = video.videoHeight || ch;
-  const containerAR = cw / Math.max(1, ch);
-  const videoAR = videoW / Math.max(1, videoH);
-  if (Math.abs(containerAR - videoAR) > 0.2) {
-    startCamera(true);
-  }
-}
-
 // Lighting adaptation system
 let lightingAnalysis = {
   brightness: 1.0,      // 0.0 (dark) to 2.0 (bright)
@@ -316,69 +148,39 @@ function onResults(results) {
 
 // Start camera
 async function startCamera() {
-  return startCamera(false);
-}
-
-// Start camera with desired constraints; optionally force restart
-async function startCamera(forceRestart) {
   if (!video || !canvas || !ctx) {
     console.error('Camera cannot start: DOM elements not available');
     return;
   }
   
-  // Feature detection and friendly message
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    if (status) {
-      status.textContent = 'Camera not supported. Please use a modern browser.';
-      status.className = 'status error';
-    }
-    return;
-  }
-
-  // Ensure correct attributes for iOS/Android autoplay
-  ensureVideoAttributes();
-
   try {
-    // Stop existing stream if restarting
-    if (forceRestart && currentStream) {
-      currentStream.getTracks().forEach(t => t.stop());
-      currentStream = null;
-    }
-
-    // Desired constraints aim for portrait-friendly ideal dimensions
-    const constraints = { 
-      video: { 
-        facingMode: 'user', 
-        width: { ideal: 720 }, 
-        height: { ideal: 1280 }
-      }, 
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user' }, 
       audio: false 
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    });
     video.srcObject = stream;
     currentStream = stream;
     
-    // Ensure canvas sizing matches container with DPR-aware buffer
-    resizeCanvasToContainer();
+    // Get container dimensions for responsive sizing
+    const container = video.parentElement;
+    const containerWidth = container ? container.clientWidth || 360 : 360;
+    const containerHeight = container ? (container.clientHeight || Math.round(containerWidth * 16/9)) : Math.round(containerWidth * 16/9);
+    
+    canvas.width = containerWidth;
+    canvas.height = containerHeight;
     
     camera = new Camera(video, {
       onFrame: async () => {
         await faceMesh.send({ image: video });
       },
-      width: lastContainerRect.width || canvas.clientWidth || 360,
-      height: lastContainerRect.height || canvas.clientHeight || Math.round((canvas.clientWidth || 360) * 16/9)
+      width: containerWidth,
+      height: containerHeight
     });
     camera.start();
     status.textContent = 'Camera ready - Face detection active';
     requestAnimationFrame(draw);
   } catch (err) {
-    if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-      status.textContent = 'Camera permission denied. iOS: Settings → Safari → Camera.';
-    } else if (err && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError')) {
-      status.textContent = 'No suitable camera found.';
-    } else {
-      status.textContent = 'Camera error: ' + (err && err.message ? err.message : 'Unknown error');
-    }
+    status.textContent = 'Camera error: ' + err.message;
     status.className = 'status error';
   }
 }
@@ -1382,16 +1184,12 @@ function setupShoppingCartAndLibrary() {
   if (cartBtn && cartModal) {
     cartBtn.addEventListener('click', () => {
       cartModal.classList.remove('hidden');
-      cartModal.setAttribute('role', 'dialog');
-      cartModal.setAttribute('aria-modal', 'true');
-      trapFocus(cartModal);
     });
   }
 
   if (closeCartBtn && cartModal) {
     closeCartBtn.addEventListener('click', () => {
       cartModal.classList.add('hidden');
-      releaseFocusTrap();
     });
   }
 
@@ -1399,7 +1197,6 @@ function setupShoppingCartAndLibrary() {
     cartModal.addEventListener('click', (e) => {
       if (e.target === cartModal) {
         cartModal.classList.add('hidden');
-        releaseFocusTrap();
       }
     });
   }
@@ -1424,17 +1221,11 @@ function setupShoppingCartAndLibrary() {
     toggleLibraryBtn.addEventListener('click', () => {
       productLibrary.classList.add('open');
     });
-    toggleLibraryBtn.setAttribute('aria-expanded', 'false');
-    toggleLibraryBtn.addEventListener('click', () => {
-      const expanded = productLibrary.classList.contains('open');
-      toggleLibraryBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    });
   }
 
   if (closeLibraryBtn && productLibrary) {
     closeLibraryBtn.addEventListener('click', () => {
       productLibrary.classList.remove('open');
-      if (toggleLibraryBtn) toggleLibraryBtn.setAttribute('aria-expanded', 'false');
     });
   }
 }
@@ -1786,24 +1577,16 @@ function updateClosetBadge() {
 // Close save outfit modal
 function closeSaveOutfitModal() {
   document.getElementById('saveOutfitModal').classList.add('hidden');
-  releaseFocusTrap();
 }
 
 // Open/close closet modal
 function openClosetModal() {
   renderClosetOutfits();
   document.getElementById('closetModal').classList.remove('hidden');
-  const closetModal = document.getElementById('closetModal');
-  if (closetModal) {
-    closetModal.setAttribute('role', 'dialog');
-    closetModal.setAttribute('aria-modal', 'true');
-    trapFocus(closetModal);
-  }
 }
 
 function closeClosetModal() {
   document.getElementById('closetModal').classList.add('hidden');
-  releaseFocusTrap();
 }
 
 // Initialize Virtual Closet event listeners
@@ -1857,8 +1640,6 @@ function initVirtualCloset() {
         closeSaveOutfitModal();
       }
     });
-    saveOutfitModal.setAttribute('role', 'dialog');
-    saveOutfitModal.setAttribute('aria-modal', 'true');
   }
   
   // Allow Enter key to save outfit
@@ -1870,20 +1651,6 @@ function initVirtualCloset() {
       }
     });
   }
-
-  // ESC to close modals
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const modals = ['cartModal', 'closetModal', 'saveOutfitModal'];
-      for (const id of modals) {
-        const el = document.getElementById(id);
-        if (el && !el.classList.contains('hidden')) {
-          el.classList.add('hidden');
-        }
-      }
-      releaseFocusTrap();
-    }
-  });
 }
 
 // Initialize DOM elements and start the app
@@ -1906,26 +1673,6 @@ function initializeApp() {
     return;
   }
   
-  // Accessibility for status updates
-  status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
-  
-  // Add safe-area helpers to common bars if present
-  const topBar = document.querySelector('.top-bar, header, .app-bar');
-  if (topBar) topBar.classList.add('safe-top');
-  const productLibraryEl = document.querySelector('.product-library');
-  if (productLibraryEl) productLibraryEl.classList.add('safe-bottom');
-
-  // Provide clear labels for key buttons
-  if (captureBtn) captureBtn.setAttribute('aria-label', 'Capture photo');
-  if (saveBtn) saveBtn.setAttribute('aria-label', 'Save image');
-  if (backToCameraBtn) backToCameraBtn.setAttribute('aria-label', 'Back to camera');
-
-  // Inject viewport/CSS and configure responsive behavior
-  injectViewportAndStyles();
-  setupResponsiveHandlers();
-  ensureVideoAttributes();
-  
   // Setup all event listeners
   setupEventListeners();
   setupSliders();
@@ -1936,18 +1683,6 @@ function initializeApp() {
   initFaceMesh();
   renderProducts(); // Initialize product library
   initVirtualCloset(); // Initialize Virtual Closet
-
-  // Diagnostics hook
-  window.__tryonDiagnostics = function() {
-    return {
-      dpr: (window.devicePixelRatio || 1),
-      orientation: (screen.orientation && screen.orientation.type) || (typeof window.orientation !== 'undefined' ? window.orientation : 'unknown'),
-      video: video ? { width: video.videoWidth, height: video.videoHeight, readyState: video.readyState } : null,
-      canvas: canvas ? { cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, bufferWidth: canvas.width, bufferHeight: canvas.height } : null,
-      faceMesh: !!faceMesh,
-      streamActive: !!(currentStream && currentStream.active)
-    };
-  };
 }
 
 // Start app when DOM is ready
